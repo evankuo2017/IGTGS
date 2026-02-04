@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+
+# Virtual Environment
+beatthis_env/
+venv/
+env/
+
+# Beat This! clone (managed by setup.py)
+beat_this/
+
+# Temporary files
+/tmp/
+*.log
+
+# Model cache
+.cache/
+models/
+
+# Upload folder
+/tmp/beatthis_uploads/
+
+# Audio files
+*.wav
+*.mp3
+*.flac
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
