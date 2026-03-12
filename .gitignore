@@ -15,6 +15,7 @@ beat_this/
 # Temporary files
 /tmp/
 *.log
+runtime/
 
 # Model cache
 .cache/
