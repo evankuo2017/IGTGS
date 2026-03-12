@@ -1,4 +1,66 @@
-flask>=2.0.0
-werkzeug>=2.0.0
-soundfile>=0.12.0
-numpy>=1.20.0
+# Core numerical stack
+numpy==1.26.4
+numba==0.59.1
+scipy==1.13.1
+
+# Flask app
+flask==3.0.3
+flask-cors==4.0.0
+flask-limiter==3.5.0
+werkzeug==3.0.3
+gunicorn==21.2.0
+python-dotenv==1.0.0
+limits==5.2.0
+
+# Audio processing
+librosa==0.10.1
+soundfile==0.12.1
+audioread==3.0.1
+resampy==0.4.3
+soxr==0.5.0.post1
+pydub==0.25.1
+ffmpeg-python==0.2.0
+madmom==0.16.1
+
+# ML frameworks
+tensorflow==2.15.1
+protobuf==3.20.3
+torch==2.6.0
+torchaudio
+
+# Music analysis
+pretty_midi==0.2.10
+mir_eval==0.8.2
+mido==1.3.3
+pyfluidsynth==1.3.4
+matplotlib==3.5.3
+seaborn==0.13.2
+pandas==1.5.3
+scikit-learn==1.6.1
+joblib==1.4.2
+figures==0.4.4
+jams==0.3.4
+pumpp==0.6.0
+
+# Utility
+requests==2.31.0
+httpx==0.19.0
+h2==4.1.0
+Pillow==10.0.0
+lyricsgenius==3.6.2
+PyYAML==6.0.2
+tqdm==4.67.1
+yt-dlp==2025.4.30
+pytube==15.0.0
+h5py==3.13.0
+packaging==25.0
+typing_extensions==4.10.0
+six==1.17.0
+click==8.2.1
+typer==0.9.0
+cachetools==5.5.2
+certifi==2025.1.31
+charset-normalizer==3.4.1
+idna==3.10
+urllib3==2.4.0
+wrapt==1.14.1

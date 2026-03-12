@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IGTGS自動吉他譜生成系統</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <h1>IGTGS自動吉他譜生成系統</h1>
+      </header>
+
+      <section class="panel source-panel">
+        <div class="panel-header">
+          <div>
+            <h2>輸入音樂來源</h2>
+            <p>先選來源，再指定節拍模型與和弦辨識模型。</p>
+          </div>
+          <div id="engine-chip" class="badge muted-badge">載入分析引擎中...</div>
+        </div>
+
+        <div class="controls-grid">
+          <div class="source-card">
+            <h3>YouTube 搜尋</h3>
+            <form id="search-form" class="search-form">
+              <input
+                id="search-input"
+                type="text"
+                placeholder="輸入關鍵字或 YouTube 連結"
+                autocomplete="off"
+              />
+              <button type="submit" class="primary-button">搜尋</button>
+            </form>
+            <p id="search-feedback" class="feedback"></p>
+            <div id="search-results" class="search-results"></div>
+          </div>
+
+          <div class="source-card">
+            <h3>音檔上傳</h3>
+            <label class="upload-dropzone" for="audio-file">
+              <input id="audio-file" type="file" accept="audio/*" />
+              <span class="upload-title">拖曳或點擊選擇音檔</span>
+              <span class="upload-copy">支援 mp3、wav、m4a、flac 等常見格式</span>
+            </label>
+            <div id="file-meta" class="file-meta"></div>
+
+            <div class="model-panel">
+              <div class="model-field">
+                <label for="beat-detector">Beat Model</label>
+                <select id="beat-detector"></select>
+              </div>
+              <div class="model-field">
+                <label for="chord-detector">Chord Model</label>
+                <select id="chord-detector"></select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="selected-source">
+          <div>
+            <p class="selected-label">目前來源</p>
+            <h3 id="selected-title">尚未選擇</h3>
+            <p id="selected-subtitle">請先搜尋並選擇影片，或上傳音檔。</p>
+          </div>
+          <button id="analyze-button" class="accent-button" disabled>開始分析</button>
+        </div>
+      </section>
+
+      <section id="status-panel" class="panel status-panel hidden">
+        <div class="loading-orb"></div>
+        <div>
+          <h2>正在分析音訊</h2>
+          <p id="status-message">準備中...</p>
+        </div>
+      </section>
+
+      <section id="results-panel" class="panel results-panel hidden">
+        <div class="results-head">
+          <div>
+            <h2 id="result-title">分析結果</h2>
+            <p id="result-subtitle">結果會顯示在這裡。</p>
+          </div>
+          <div id="summary-chips" class="summary-chips"></div>
+        </div>
+
+        <div class="tabs-shell">
+          <div class="tabs">
+            <button class="tab-button active" data-tab="beatChordMap">整首歌和弦譜</button>
+            <button class="tab-button" data-tab="guitarChords">全部和弦指法圖</button>
+            <button class="tab-button" data-tab="rawData">Raw Data</button>
+          </div>
+        </div>
+
+        <div class="tab-panels">
+          <div id="tab-beatChordMap" class="tab-panel active">
+            <div id="analysis-summary" class="analysis-summary"></div>
+            <section class="result-section">
+              <div class="section-head">
+                <div>
+                  <h3>整首歌和弦譜</h3>
+                  <p>可播放音訊並依照當前時間即時標示對應小節與拍點。</p>
+                </div>
+              </div>
+              <div class="audio-player-shell">
+                <audio id="analysis-audio" class="analysis-audio" controls preload="metadata"></audio>
+                <div id="playback-status" class="playback-status">尚未開始播放</div>
+              </div>
+              <div id="chord-grid" class="chord-grid"></div>
+            </section>
+          </div>
+
+          <div id="tab-guitarChords" class="tab-panel">
+            <section class="result-section">
+              <div class="section-head">
+                <div>
+                  <h3>全部和弦指法圖</h3>
+                  <p>使用 chord database 動態產生完整指法圖，並支援多個把位切換。</p>
+                </div>
+              </div>
+              <div id="guitar-chords" class="diagram-grid"></div>
+            </section>
+          </div>
+
+          <div id="tab-rawData" class="tab-panel">
+            <pre id="raw-output" class="raw-output"></pre>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+  </body>
+</html>
