@@ -15,8 +15,10 @@
 - `conda` 或 `miniconda`
 - `ffmpeg`
 ## 0. clone該專案並先切換到專案資料夾內
+```bash
 git clone https://github.com/evankuo2017/IGTGS.git
 cd /your/path/
+```
 
 ## 1. 建立 conda 環境
 
@@ -58,10 +60,6 @@ conda install -c conda-forge ffmpeg -y
 ```
 
 ## 3. 安裝 Python 依賴
-
-
-
-再安裝依賴：
 
 ```bash
 pip install -r requirements.txt
