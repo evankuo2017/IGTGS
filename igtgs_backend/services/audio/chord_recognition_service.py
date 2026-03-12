@@ -10,8 +10,6 @@ import time
 from typing import Dict, Any, List, Optional
 from utils.logging import log_info, log_error, log_debug
 from services.detectors.chord_cnn_lstm_detector import ChordCNNLSTMDetectorService
-from services.detectors.btc_sl_detector import BTCSLDetectorService
-from services.detectors.btc_pl_detector import BTCPLDetectorService
 from services.audio.audio_utils import validate_audio_file, get_audio_duration
 from services.audio.spleeter_service import SpleeterService
 from utils.chord_mappings import (
@@ -19,7 +17,7 @@ from utils.chord_mappings import (
     get_default_chord_dict, 
     validate_chord_dict_for_model
 )
-from utils.paths import CHORD_CNN_LSTM_DIR, CHORDMINI_DIR
+from utils.paths import CHORD_CNN_LSTM_DIR
 
 
 class ChordRecognitionService:
@@ -31,15 +29,11 @@ class ChordRecognitionService:
         """Initialize the chord recognition service with available detectors."""
         self.detectors = {
             'chord-cnn-lstm': ChordCNNLSTMDetectorService(str(CHORD_CNN_LSTM_DIR)),
-            'btc-sl': BTCSLDetectorService(str(CHORDMINI_DIR)),
-            'btc-pl': BTCPLDetectorService(str(CHORDMINI_DIR))
         }
         
         # File size limits (in MB)
         self.size_limits = {
             'chord-cnn-lstm': 100,  # 100MB limit for Chord-CNN-LSTM
-            'btc-sl': 50,          # 50MB limit for BTC-SL
-            'btc-pl': 50           # 50MB limit for BTC-PL
         }
         
         # Initialize Spleeter service
@@ -64,7 +58,7 @@ class ChordRecognitionService:
         Select the best detector based on request, availability, and file size.
         
         Args:
-            requested_detector: Requested detector ('chord-cnn-lstm', 'btc-sl', 'btc-pl', 'auto')
+            requested_detector: Requested detector ('chord-cnn-lstm', 'auto')
             file_size_mb: File size in megabytes
             force: Force use of requested detector even if file is large
             
@@ -83,7 +77,7 @@ class ChordRecognitionService:
         log_debug(f"Requested: {requested_detector}, File size: {file_size_mb:.1f}MB, Force: {force}")
         
         # Handle specific detector requests
-        if requested_detector in ['chord-cnn-lstm', 'btc-sl', 'btc-pl']:
+        if requested_detector in ['chord-cnn-lstm']:
             if requested_detector not in available_detectors:
                 log_error(f"{requested_detector} requested but not available")
                 # Fall back to best available option
@@ -115,24 +109,6 @@ class ChordRecognitionService:
         Returns:
             str: Selected detector name
         """
-        # Preference order: chord-cnn-lstm > btc-sl > btc-pl
-        # But consider file size limits
-        
-        if file_size_mb <= 50:  # Small files - prefer BTC models for better accuracy
-            if 'btc-sl' in available_detectors:
-                return 'btc-sl'
-            elif 'btc-pl' in available_detectors:
-                return 'btc-pl'
-        
-        if file_size_mb <= 100:  # Medium files - Chord-CNN-LSTM or BTC models
-            if 'chord-cnn-lstm' in available_detectors:
-                return 'chord-cnn-lstm'
-            elif 'btc-sl' in available_detectors:
-                return 'btc-sl'
-            elif 'btc-pl' in available_detectors:
-                return 'btc-pl'
-        
-        # Large files - prefer Chord-CNN-LSTM
         if 'chord-cnn-lstm' in available_detectors and file_size_mb <= self.size_limits['chord-cnn-lstm']:
             return 'chord-cnn-lstm'
         
@@ -157,13 +133,8 @@ class ChordRecognitionService:
         ]
         
         if suitable_detectors:
-            # Prefer chord-cnn-lstm for large files, then BTC models
             if 'chord-cnn-lstm' in suitable_detectors:
                 return 'chord-cnn-lstm'
-            elif 'btc-sl' in suitable_detectors:
-                return 'btc-sl'
-            elif 'btc-pl' in suitable_detectors:
-                return 'btc-pl'
             else:
                 return suitable_detectors[0]
         
@@ -178,7 +149,7 @@ class ChordRecognitionService:
         
         Args:
             file_path: Path to the audio file
-            detector: Detector to use ('chord-cnn-lstm', 'btc-sl', 'btc-pl', 'auto')
+            detector: Detector to use ('chord-cnn-lstm', 'auto')
             chord_dict: Chord dictionary to use (if None, uses model default)
             force: Force use of requested detector even if file is large
             use_spleeter: Whether to use Spleeter for audio separation

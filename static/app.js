@@ -12,6 +12,9 @@ const state = {
   chordPositions: {},
 };
 
+const FIXED_BEAT_DETECTOR = "madmom";
+const FIXED_CHORD_DETECTOR = "chord-cnn-lstm";
+
 const LOCAL_CHORD_DB_URL = "/static/vendor/chords/guitar.json";
 const LOCAL_CHORD_IMAGE_BASE = "/static/chord-diagrams";
 
@@ -508,12 +511,6 @@ function formatChordDisplay(chordName, accidentalPreference) {
   return formattedChord;
 }
 
-function populateSelect(select, options, selected) {
-  select.innerHTML = (options || [])
-    .map((value) => `<option value="${value}" ${value === selected ? "selected" : ""}>${value}</option>`)
-    .join("");
-}
-
 async function loadEngineStatus() {
   try {
     const response = await fetch("/api/health");
@@ -523,10 +520,8 @@ async function loadEngineStatus() {
     }
 
     state.engine = data;
-    dom.engineChip.textContent = `IGTGS 本地引擎 | Beat: ${data.availableBeatDetectors.join(", ")} | Chord: ${data.availableChordDetectors.join(", ")}`;
+    dom.engineChip.textContent = "IGTGS 本地引擎已就緒";
     dom.engineChip.classList.remove("muted-badge");
-    populateSelect(dom.beatDetector, data.availableBeatDetectors, data.defaultBeatDetector || data.availableBeatDetectors[0]);
-    populateSelect(dom.chordDetector, data.availableChordDetectors, data.defaultChordDetector || data.availableChordDetectors[0]);
   } catch (error) {
     dom.engineChip.textContent = error.message || "分析引擎載入失敗";
     dom.engineChip.classList.add("muted-badge");
@@ -1104,8 +1099,8 @@ async function renderAnalysis(analysis) {
 
 async function handleAnalyze() {
   const formData = new FormData();
-  formData.append("beat_detector", dom.beatDetector.value);
-  formData.append("chord_detector", dom.chordDetector.value);
+  formData.append("beat_detector", FIXED_BEAT_DETECTOR);
+  formData.append("chord_detector", FIXED_CHORD_DETECTOR);
 
   if (state.selectedFile) {
     formData.append("audio_file", state.selectedFile);

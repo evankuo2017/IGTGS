@@ -42,29 +42,17 @@ CHORD_DICTIONARIES = {
         'extensions': True,
         'inversions': True,
         'complex_chords': False
-    },
-    'large_voca': {
-        'description': 'Large vocabulary for transformer models (170 chords)',
-        'size': 'Large (170 chords)',
-        'models': ['btc-sl', 'btc-pl'],
-        'extensions': True,
-        'inversions': True,
-        'complex_chords': True
     }
 }
 
 # Model-specific chord dictionary mappings
 MODEL_CHORD_DICT_MAPPING = {
     'chord-cnn-lstm': ['full', 'ismir2017', 'submission', 'extended'],
-    'btc-sl': ['large_voca'],
-    'btc-pl': ['large_voca']
 }
 
 # Default chord dictionaries for each model
 DEFAULT_CHORD_DICTS = {
     'chord-cnn-lstm': 'submission',
-    'btc-sl': 'large_voca',
-    'btc-pl': 'large_voca'
 }
 
 # Common chord symbols and their variations

@@ -14,6 +14,9 @@
 - Python：建議 `3.10`
 - `conda` 或 `miniconda`
 - `ffmpeg`
+## 0. clone該專案並先切換到專案資料夾內
+git clone https://github.com/evankuo2017/IGTGS.git
+cd /your/path/
 
 ## 1. 建立 conda 環境
 
@@ -37,16 +40,18 @@ conda activate IGTGS
 
 `YouTube` 音訊下載與部分音訊處理流程需要 `ffmpeg`。
 
-### Ubuntu / Debian
+### 方法 A：Ubuntu / Debian 建議優先使用
+
+如果你是在 Linux，建議先用系統套件安裝，通常比 `conda-forge` 穩定：
 
 ```bash
 sudo apt update
 sudo apt install -y ffmpeg
 ```
 
-### Conda 安裝方式
+### 方法 B：conda 安裝
 
-如果你想直接裝在 conda 環境內：
+如果你希望裝在 conda 環境內，再使用：
 
 ```bash
 conda install -c conda-forge ffmpeg -y
@@ -54,11 +59,7 @@ conda install -c conda-forge ffmpeg -y
 
 ## 3. 安裝 Python 依賴
 
-先切換到專案資料夾：
 
-```bash
-cd /home/samjimbe/project/IGTGS
-```
 
 再安裝依賴：
 

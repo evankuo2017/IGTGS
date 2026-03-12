@@ -10,11 +10,8 @@ import time
 from collections import Counter
 from typing import Dict, Any, List, Optional
 from utils.logging import log_info, log_error, log_debug
-from services.detectors.beat_transformer_detector import BeatTransformerDetectorService
 from services.detectors.madmom_detector import MadmomDetectorService
-from services.detectors.librosa_detector import LibrosaDetectorService
 from services.audio.audio_utils import validate_audio_file, get_audio_duration
-from utils.paths import BEAT_TRANSFORMER_CHECKPOINT
 
 
 class BeatDetectionService:
@@ -25,16 +22,12 @@ class BeatDetectionService:
     def __init__(self):
         """Initialize the beat detection service with available detectors."""
         self.detectors = {
-            'beat-transformer': BeatTransformerDetectorService(str(BEAT_TRANSFORMER_CHECKPOINT)),
             'madmom': MadmomDetectorService(),
-            'librosa': LibrosaDetectorService()
         }
 
         # File size limits (in MB)
         self.size_limits = {
-            'beat-transformer': 100,  # 100MB limit for Beat Transformer
             'madmom': 200,           # 200MB limit for madmom
-            'librosa': 500           # 500MB limit for librosa
         }
 
     def get_available_detectors(self) -> List[str]:
@@ -56,7 +49,7 @@ class BeatDetectionService:
         Select the best detector based on request, availability, and file size.
 
         Args:
-            requested_detector: Requested detector ('beat-transformer', 'madmom', 'librosa', 'auto')
+            requested_detector: Requested detector ('madmom', 'auto')
             file_size_mb: File size in megabytes
             force: Force use of requested detector even if file is large
 
@@ -75,7 +68,7 @@ class BeatDetectionService:
         log_debug(f"Requested: {requested_detector}, File size: {file_size_mb:.1f}MB, Force: {force}")
 
         # Handle specific detector requests
-        if requested_detector in ['beat-transformer', 'madmom', 'librosa']:
+        if requested_detector in ['madmom']:
             if requested_detector not in available_detectors:
                 log_error(f"{requested_detector} requested but not available")
                 # Fall back to best available option
@@ -107,26 +100,8 @@ class BeatDetectionService:
         Returns:
             str: Selected detector name
         """
-        # Preference order: madmom > beat-transformer > librosa
-        # But consider file size limits
-
-        if file_size_mb <= 50:  # Small files - prefer Madmom
-            if 'madmom' in available_detectors:
-                return 'madmom'
-            elif 'beat-transformer' in available_detectors:
-                return 'beat-transformer'
-
-        if file_size_mb <= 100:  # Medium files - Madmom or Beat Transformer
-            if 'madmom' in available_detectors:
-                return 'madmom'
-            elif 'beat-transformer' in available_detectors:
-                return 'beat-transformer'
-
-        # Large files - prefer madmom or librosa
         if 'madmom' in available_detectors and file_size_mb <= self.size_limits['madmom']:
             return 'madmom'
-        elif 'librosa' in available_detectors and file_size_mb <= self.size_limits['librosa']:
-            return 'librosa'
 
         # Fallback to any available detector
         return available_detectors[0]
@@ -149,11 +124,8 @@ class BeatDetectionService:
         ]
 
         if suitable_detectors:
-            # Prefer madmom for large files, then librosa
             if 'madmom' in suitable_detectors:
                 return 'madmom'
-            elif 'librosa' in suitable_detectors:
-                return 'librosa'
             else:
                 return suitable_detectors[0]
 
@@ -167,7 +139,7 @@ class BeatDetectionService:
 
         Args:
             file_path: Path to the audio file
-            detector: Detector to use ('beat-transformer', 'madmom', 'librosa', 'auto')
+            detector: Detector to use ('madmom', 'auto')
             force: Force use of requested detector even if file is large
 
         Returns:
@@ -328,21 +300,11 @@ class BeatDetectionService:
                 "description": self._get_detector_description(name)
             }
 
-            # Add device info for Beat Transformer
-            if name == 'beat-transformer' and detector.is_available():
-                try:
-                    device_info = detector.get_device_info()
-                    info["detectors"][name]["device_info"] = device_info
-                except Exception as e:
-                    info["detectors"][name]["device_error"] = str(e)
-
         return info
 
     def _get_detector_description(self, detector_name: str) -> str:
         """Get description for a detector."""
         descriptions = {
-            'beat-transformer': "DL model with 5-channel audio separation, flexible in time signatures, slow processing speed",
             'madmom': "Neural network with high accuracy and speed, best for common time signatures (3/4, 4/4)",
-            'librosa': "Classical signal processing approach, fast but less accurate"
         }
         return descriptions.get(detector_name, "Unknown detector")

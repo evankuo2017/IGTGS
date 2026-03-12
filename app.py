@@ -18,6 +18,8 @@ from grid_builder import build_frontend_analysis
 
 BASE_DIR = Path(__file__).resolve().parent
 AUDIO_CACHE_DIR = BASE_DIR / "runtime" / "audio_cache"
+FIXED_BEAT_DETECTOR = "madmom"
+FIXED_CHORD_DETECTOR = "chord-cnn-lstm"
 YOUTUBE_URL_RE = re.compile(
     r"^(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/)[A-Za-z0-9_-]+"
 )
@@ -148,11 +150,15 @@ def api_analyze() -> Any:
     video_id = request.form.get("video_id", "").strip()
     title = request.form.get("title", "").strip()
     uploaded_file = request.files.get("audio_file")
-    beat_detector = request.form.get("beat_detector", "madmom").strip() or "madmom"
-    chord_detector = request.form.get("chord_detector", "chord-cnn-lstm").strip() or "chord-cnn-lstm"
+    beat_detector = request.form.get("beat_detector", FIXED_BEAT_DETECTOR).strip() or FIXED_BEAT_DETECTOR
+    chord_detector = request.form.get("chord_detector", FIXED_CHORD_DETECTOR).strip() or FIXED_CHORD_DETECTOR
 
     if not video_id and not uploaded_file:
         return jsonify({"success": False, "error": "請先選擇 YouTube 影片或上傳音檔。"}), 400
+    if beat_detector != FIXED_BEAT_DETECTOR:
+        return jsonify({"success": False, "error": f"目前只支援 {FIXED_BEAT_DETECTOR}。"}), 400
+    if chord_detector != FIXED_CHORD_DETECTOR:
+        return jsonify({"success": False, "error": f"目前只支援 {FIXED_CHORD_DETECTOR}。"}), 400
 
     try:
         with tempfile.TemporaryDirectory(prefix="igtgs_") as workdir:
@@ -174,7 +180,7 @@ def api_analyze() -> Any:
                 audio_path,
                 beat_detector=beat_detector,
                 chord_detector=chord_detector,
-                chord_dict="large_voca" if chord_detector in {"btc-sl", "btc-pl"} else "submission",
+                chord_dict="submission",
             )
 
             analysis_payload = build_frontend_analysis(

@@ -93,8 +93,6 @@ def get_default_chord_dict(model_name: str) -> str:
     """
     defaults = {
         'chord-cnn-lstm': 'submission',
-        'btc-sl': 'large_voca',
-        'btc-pl': 'large_voca'
     }
     return defaults.get(model_name, 'submission')
 

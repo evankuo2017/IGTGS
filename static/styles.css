@@ -133,7 +133,8 @@ select {
 }
 
 .search-form input,
-.model-field select {
+.model-field select,
+.readonly-model-value {
   width: 100%;
   min-height: 50px;
   border-radius: 16px;
@@ -303,6 +304,15 @@ select {
   font-size: 0.9rem;
   font-weight: 700;
   color: var(--muted);
+}
+
+.readonly-model-value {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: default;
+  user-select: text;
+  background: rgba(248, 250, 252, 0.92);
 }
 
 .selected-source {
@@ -716,7 +726,8 @@ select {
   }
 
   .search-form input,
-  .model-field select {
+  .model-field select,
+  .readonly-model-value {
     background: rgba(15, 23, 42, 0.92);
     color: var(--text-dark);
     border-color: rgba(148, 163, 184, 0.16);

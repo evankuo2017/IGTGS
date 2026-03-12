@@ -11,6 +11,8 @@ BASE_DIR = Path(__file__).resolve().parent
 IGTGS_BACKEND_DIR = Path(
     os.environ.get("IGTGS_BACKEND_DIR", str(BASE_DIR / "igtgs_backend"))
 ).resolve()
+FIXED_BEAT_DETECTOR = "madmom"
+FIXED_CHORD_DETECTOR = "chord-cnn-lstm"
 
 
 def _prepare_backend_imports() -> None:
@@ -39,23 +41,15 @@ def get_services() -> tuple[Any, Any]:
 
 def get_engine_status() -> dict[str, Any]:
     try:
-        beat_service, chord_service = get_services()
-        beat_detectors = beat_service.get_available_detectors()
-        chord_detectors = chord_service.get_available_detectors()
+        get_services()
         return {
             "success": True,
             "mode": "local-engine",
             "sourceDir": str(IGTGS_BACKEND_DIR),
-            "availableBeatDetectors": beat_detectors,
-            "availableChordDetectors": chord_detectors,
-            "defaultBeatDetector": (
-                "madmom" if "madmom" in beat_detectors else (beat_detectors[0] if beat_detectors else "")
-            ),
-            "defaultChordDetector": (
-                "chord-cnn-lstm"
-                if "chord-cnn-lstm" in chord_detectors
-                else (chord_detectors[0] if chord_detectors else "")
-            ),
+            "availableBeatDetectors": [FIXED_BEAT_DETECTOR],
+            "availableChordDetectors": [FIXED_CHORD_DETECTOR],
+            "defaultBeatDetector": FIXED_BEAT_DETECTOR,
+            "defaultChordDetector": FIXED_CHORD_DETECTOR,
         }
     except Exception as exc:  # noqa: BLE001
         return {
@@ -68,10 +62,15 @@ def get_engine_status() -> dict[str, Any]:
 
 def analyze_audio_file(
     audio_path: str,
-    beat_detector: str = "madmom",
-    chord_detector: str = "btc-sl",
+    beat_detector: str = FIXED_BEAT_DETECTOR,
+    chord_detector: str = FIXED_CHORD_DETECTOR,
     chord_dict: str = "large_voca",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    if beat_detector != FIXED_BEAT_DETECTOR:
+        raise RuntimeError(f"Only {FIXED_BEAT_DETECTOR} is supported")
+    if chord_detector != FIXED_CHORD_DETECTOR:
+        raise RuntimeError(f"Only {FIXED_CHORD_DETECTOR} is supported")
+
     beat_service, chord_service = get_services()
 
     beat_data = beat_service.detect_beats(audio_path, detector=beat_detector, force=False)
