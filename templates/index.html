@@ -86,50 +86,91 @@
           <div id="summary-chips" class="summary-chips"></div>
         </div>
 
-        <div class="tabs-shell">
-          <div class="tabs">
-            <button class="tab-button active" data-tab="beatChordMap">整首歌和弦譜</button>
-            <button class="tab-button" data-tab="guitarChords">全部和弦指法圖</button>
-            <button class="tab-button" data-tab="rawData">Raw Data</button>
-          </div>
-        </div>
-
-        <div class="tab-panels">
-          <div id="tab-beatChordMap" class="tab-panel active">
-            <div id="analysis-summary" class="analysis-summary"></div>
-            <section class="result-section">
-              <div class="section-head">
-                <div>
-                  <h3>整首歌和弦譜</h3>
-                  <p>可播放音訊並依照當前時間即時標示對應小節與拍點。</p>
-                </div>
+        <div class="results-layout">
+          <div class="results-main">
+            <div class="tabs-shell">
+              <div class="tabs">
+                <button class="tab-button active" data-tab="beatChordMap">整首歌和弦譜</button>
+                <button class="tab-button" data-tab="guitarChords">全部和弦指法圖</button>
+                <button class="tab-button" data-tab="rawData">Raw Data</button>
               </div>
-              <div class="audio-player-shell">
-                <audio id="analysis-audio" class="analysis-audio" controls preload="metadata"></audio>
-                <div id="playback-status" class="playback-status">尚未開始播放</div>
-              </div>
-              <div id="chord-grid" class="chord-grid"></div>
-            </section>
-          </div>
+            </div>
 
-          <div id="tab-guitarChords" class="tab-panel">
-            <section class="result-section">
-              <div class="section-head">
-                <div>
-                  <h3>全部和弦指法圖</h3>
-                  <p>使用 chord database 動態產生完整指法圖，並支援多個把位切換。</p>
-                </div>
+            <div class="tab-panels">
+              <div id="tab-beatChordMap" class="tab-panel active">
+                <div id="analysis-summary" class="analysis-summary"></div>
+                <section class="result-section">
+                  <div class="section-head">
+                    <div>
+                      <h3>整首歌和弦譜</h3>
+                      <p>可播放音訊並依照當前時間即時標示對應小節與拍點。</p>
+                    </div>
+                    <div class="capo-control">
+                      <label for="capo-selector">Capo：</label>
+                      <select id="capo-selector" aria-label="選擇 Capo 移調">
+                        <option value="0" selected>0</option>
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                      </select>
+                      <span class="capo-hint">和弦與指型圖將整體降低對應半音</span>
+                    </div>
+                  </div>
+                  <div class="audio-player-shell">
+                    <audio id="analysis-audio" class="analysis-audio" controls preload="metadata"></audio>
+                    <div id="playback-status" class="playback-status">尚未開始播放</div>
+                    <div class="next-chord-pill">
+                      <span class="next-chord-label">下個和弦</span>
+                      <span id="next-chord-text" class="next-chord-text">--</span>
+                    </div>
+                  </div>
+                  <div id="chord-grid" class="chord-grid"></div>
+                </section>
               </div>
-              <div id="guitar-chords" class="diagram-grid"></div>
-            </section>
-          </div>
 
-          <div id="tab-rawData" class="tab-panel">
-            <pre id="raw-output" class="raw-output"></pre>
+              <div id="tab-guitarChords" class="tab-panel">
+                <section class="result-section">
+                  <div class="section-head">
+                    <div>
+                      <h3>全部和弦指法圖</h3>
+                      <p>使用 chord database 動態產生完整指法圖，並支援多個把位切換。</p>
+                    </div>
+                  </div>
+                  <div id="guitar-chords" class="diagram-grid"></div>
+                </section>
+              </div>
+
+              <div id="tab-rawData" class="tab-panel">
+                <pre id="raw-output" class="raw-output"></pre>
+              </div>
+            </div>
           </div>
         </div>
       </section>
     </div>
+
+    <!--
+      即時指形圖必須放在 .panel 外層：.panel 使用 backdrop-filter 時，
+      內部的 position:fixed 會相對於該面板（非 viewport），導致要捲到結果區最底才看得到。
+    -->
+    <aside id="chord-sidebar" class="hidden results-sidebar chord-sidebar-panel chord-floating-panel" aria-label="即時指形圖">
+      <div class="chord-sidebar-panel-header">
+        <h3>即時指形圖</h3>
+        <p>依播放進度顯示當前與下一個和弦</p>
+      </div>
+      <div class="chord-sidebar-panel-body">
+        <div class="chord-sidebar-card">
+          <h4 class="chord-sidebar-label">當前和弦</h4>
+          <div id="current-chord-diagram" class="chord-sidebar-diagram"></div>
+        </div>
+        <div class="chord-sidebar-card">
+          <h4 class="chord-sidebar-label">下個和弦</h4>
+          <div id="next-chord-diagram" class="chord-sidebar-diagram"></div>
+        </div>
+      </div>
+    </aside>
 
     <script src="{{ url_for('static', filename='app.js') }}" defer></script>
   </body>

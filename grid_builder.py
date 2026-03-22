@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 def to_beat_info(beat_data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -63,6 +66,80 @@ def synchronize_chords(
         last_chord = chord_name
 
     return synchronized
+
+
+def score_downbeat_alignment(
+    chord_series: list[str],
+    time_signature: int,
+) -> tuple[float, int]:
+    """評分：和弦變換落在下拍加權、非下拍扣分。與 ChordMiniApp 相同的啟發式。"""
+    if not chord_series or len(chord_series) < 2:
+        return 0.0, 0
+
+    def is_valid(c: str) -> bool:
+        return bool(c and c not in ("", "N.C.", "N/C", "N"))
+
+    change_at: list[bool] = [False] * len(chord_series)
+    for i in range(1, len(chord_series)):
+        prev, curr = chord_series[i - 1], chord_series[i]
+        if is_valid(prev) and is_valid(curr) and prev != curr:
+            change_at[i] = True
+
+    on_weight = 2
+    off_penalty = 1
+    best_score = float("-inf")
+    best_shift = 0
+
+    for shift in range(time_signature):
+        on_down = 0
+        off_down = 0
+        for i in range(1, len(chord_series)):
+            if not change_at[i]:
+                continue
+            pos = ((i - shift) % time_signature + time_signature) % time_signature
+            if pos == 0:
+                on_down += 1
+            else:
+                off_down += 1
+        score = on_down * on_weight - off_down * off_penalty
+        if score > best_score:
+            best_score = score
+            best_shift = shift
+
+    return best_score if best_score != float("-inf") else 0.0, best_shift
+
+
+def choose_meter_and_downbeats(
+    beat_data: dict[str, Any],
+    chord_data: dict[str, Any],
+) -> dict[str, Any] | None:
+    """
+    依 ChordMiniApp 機制：用和弦變換與下拍對齊分數，在 3/4 與 4/4 候選間選擇。
+    若有 downbeat_candidates 則回傳 {'downbeats': [...], 'time_signature': '3/4'|'4/4'}，否則回傳 None。
+    """
+    candidates = beat_data.get("downbeat_candidates") or {}
+    if not candidates or "3" not in candidates or "4" not in candidates:
+        return None
+
+    raw_beats = beat_data.get("beats") or []
+    chords = chord_data.get("chords") or []
+    if not raw_beats or not chords:
+        return None
+
+    beats_for_sync = [
+        {"time": float(t), "strength": 0.8, "beatNum": (i % 4) + 1}
+        for i, t in enumerate(raw_beats)
+    ]
+    synced = synchronize_chords(chords, beats_for_sync)
+    chord_series = [s["chord"] for s in synced]
+
+    s3, _ = score_downbeat_alignment(chord_series, 3)
+    s4, _ = score_downbeat_alignment(chord_series, 4)
+    winner = 3 if s3 > s4 else 4
+    downbeats = candidates.get(str(winner)) or []
+    time_sig = f"{winner}/4"
+
+    return {"downbeats": downbeats, "time_signature": time_sig}
 
 
 def calculate_optimal_shift(chords: list[str], time_signature: int, padding_count: int = 0) -> int:
@@ -241,6 +318,14 @@ def build_frontend_analysis(
     beat_data: dict[str, Any],
     chord_data: dict[str, Any],
 ) -> dict[str, Any]:
+    # 依 ChordMiniApp 機制：用和弦變換與下拍對齊分數，自動選擇 3/4 或 4/4
+    chosen = choose_meter_and_downbeats(beat_data, chord_data)
+    if chosen:
+        beat_data = dict(beat_data)
+        beat_data["downbeats"] = chosen["downbeats"]
+        beat_data["time_signature"] = chosen["time_signature"]
+        _log.info("Auto-selected meter (chord-downbeat alignment): → %s", chosen["time_signature"])
+
     beats = to_beat_info(beat_data)
     synchronized_chords = synchronize_chords(chord_data.get("chords") or [], beats)
     time_signature_raw = beat_data.get("time_signature", 4)

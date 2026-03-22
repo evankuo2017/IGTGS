@@ -21,18 +21,17 @@ def _prepare_backend_imports() -> None:
         sys.path.insert(0, backend_dir)
 
     from compat import apply_all  # type: ignore
-    from utils.paths import setup_model_paths  # type: ignore
 
+    # 套用相容性修正，避免 NumPy／SciPy／madmom／librosa 版本差異
     apply_all()
-    setup_model_paths()
 
 
 @lru_cache(maxsize=1)
 def get_services() -> tuple[Any, Any]:
     _prepare_backend_imports()
 
-    from services.audio.beat_detection_service import BeatDetectionService  # type: ignore
-    from services.audio.chord_recognition_service import ChordRecognitionService  # type: ignore
+    from beat_service import BeatDetectionService  # type: ignore
+    from chord_service import ChordRecognitionService  # type: ignore
 
     beat_service = BeatDetectionService()
     chord_service = ChordRecognitionService()
@@ -64,7 +63,7 @@ def analyze_audio_file(
     audio_path: str,
     beat_detector: str = FIXED_BEAT_DETECTOR,
     chord_detector: str = FIXED_CHORD_DETECTOR,
-    chord_dict: str = "large_voca",
+    chord_dict: str = "submission",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if beat_detector != FIXED_BEAT_DETECTOR:
         raise RuntimeError(f"Only {FIXED_BEAT_DETECTOR} is supported")

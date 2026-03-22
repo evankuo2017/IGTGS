@@ -438,6 +438,39 @@ select {
   font-size: 0.92rem;
 }
 
+.capo-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.capo-control label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.capo-control select {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: var(--panel);
+}
+
+.capo-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .capo-hint {
+    display: none;
+  }
+}
+
 .analysis-card {
   padding: 14px;
   border-radius: 18px;
@@ -464,6 +497,7 @@ select {
   display: grid;
   gap: 10px;
   margin-bottom: 18px;
+  position: relative;
 }
 
 .analysis-audio {
@@ -476,56 +510,240 @@ select {
   font-weight: 600;
 }
 
+/* 中央播放器附近的「下個和弦」凸顯標示 */
+.next-chord-pill {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+
+.next-chord-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.next-chord-text {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+/* 分析結果：主內容 + 右側固定欄位 */
+.results-layout {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+}
+
+.results-main {
+  flex: 1;
+  min-width: 0;
+  padding-right: 0;
+  /* 僅留固定指形圖（floating panel）所需最小高度，避免整頁底部一大塊空白 */
+  padding-bottom: clamp(120px, 14vh, 200px);
+}
+
+.results-sidebar {
+  position: fixed !important;
+  left: 16px;
+  right: auto;
+  top: auto;
+  bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+  transform: none;
+  align-self: flex-start;
+  z-index: 20;
+}
+
 .chord-grid {
   display: grid;
 }
 
+/* 右側獨立欄位框：即時指形圖面板 */
+.chord-sidebar-panel {
+  flex-shrink: 0;
+  width: min(560px, calc(100vw - 32px));
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(248, 250, 252, 0.96);
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.chord-sidebar-panel-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.chord-sidebar-panel-header h3 {
+  margin: 0 0 6px;
+  font-size: 1.08rem;
+}
+
+.chord-sidebar-panel-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.chord-sidebar-panel-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.chord-sidebar-card {
+  flex: 1;
+  min-width: 220px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 16px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.chord-sidebar-label {
+  margin: 0 0 12px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.chord-sidebar-diagram {
+  min-height: 105px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chord-sidebar-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.chord-sidebar-diagram-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.chord-sidebar-chord-name {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text);
+  text-align: center;
+}
+
+.chord-sidebar-svg-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.chord-sidebar-svg-wrap .diagram-svg {
+  max-width: 100px;
+}
+
+.chord-sidebar-image-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.chord-sidebar-image {
+  max-width: 100%;
+  max-height: 130px;
+  object-fit: contain;
+}
+
+/* 和弦譜外層：可橫向捲動；垂直 playhead（播放線）疊在格線之上 */
+.chord-grid-track {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+/* 和弦時間軸：拍與拍之間無格線；保留小節起始左側 bar line；播放位置用 .chord-playhead 垂直線 */
 .continuous-chord-grid {
   display: grid;
   gap: 0;
-  border-top: 1px solid rgba(203, 213, 225, 0.82);
-  border-left: 1px solid rgba(203, 213, 225, 0.82);
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+}
+
+.chord-playhead {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 0;
+  margin-left: -1px;
+  background: #2563eb;
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 6;
+  display: none;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.35);
 }
 
 .measure-cell {
-  min-height: 64px;
-  padding: 8px 6px 9px;
-  border-right: 1px solid rgba(203, 213, 225, 0.72);
-  border-bottom: 1px solid rgba(203, 213, 225, 0.72);
+  min-height: 52px;
+  padding: 6px 4px 8px;
+  border: none;
   display: grid;
   align-content: center;
   justify-items: start;
-  gap: 6px;
+  gap: 4px;
   background: transparent;
   cursor: pointer;
   text-align: left;
-  border-top: 0;
-  border-left: 0;
 }
 
+/* 小節線：每小節第一拍左側一條；換列時在該列最後一格右側再補一條（非全譜最後一格） */
 .measure-cell.measure-start {
-  border-left: 2.5px solid rgba(71, 85, 105, 0.85);
+  border-left: 2.5px solid rgba(71, 85, 105, 0.88);
 }
 
-.measure-cell.measure-end {
-  border-right: 2.5px solid rgba(71, 85, 105, 0.85);
+.continuous-chord-grid > .measure-cell.measure-start:first-child {
+  border-left: none;
 }
 
-.measure-cell.shift {
-  background: rgba(241, 245, 249, 0.85);
+.measure-cell.chord-grid-row-wrap-bar {
+  border-right: 2.5px solid rgba(71, 85, 105, 0.88);
 }
 
+/* 列與列之間：淡灰水平線（該列每一格都有 border-top，視覺上橫跨整列寬度） */
+.measure-cell.chord-grid-row-hline {
+  border-top: 1px solid rgba(148, 163, 184, 0.42);
+}
+
+.measure-cell.shift,
 .measure-cell.padding {
-  background: rgba(219, 234, 254, 0.4);
-}
-
-.measure-cell.active {
-  background: rgba(59, 130, 246, 0.08);
-  box-shadow: inset 0 0 0 1.5px rgba(37, 99, 235, 0.28);
+  background: transparent;
 }
 
 .chord-tag {
@@ -533,7 +751,7 @@ select {
   font-size: 0.95rem;
   font-weight: 800;
   text-align: left;
-  color: #2563eb;
+  color: var(--muted);
   letter-spacing: 0.01em;
 }
 
@@ -694,6 +912,8 @@ select {
   .source-card,
   .analysis-card,
   .diagram-card,
+  .chord-sidebar-card,
+  .chord-sidebar-panel,
   .search-result,
   .upload-dropzone,
   .selected-source,
@@ -706,6 +926,8 @@ select {
   .source-card,
   .analysis-card,
   .diagram-card,
+  .chord-sidebar-card,
+  .chord-sidebar-panel,
   .search-result,
   .upload-dropzone,
   .selected-source {
@@ -721,8 +943,14 @@ select {
   #selected-subtitle,
   .analysis-card .label,
   .diagram-note,
-  .diagram-row span {
+  .diagram-row span,
+  .chord-sidebar-empty {
     color: var(--muted-dark);
+  }
+
+  .chord-sidebar-panel-header {
+    background: rgba(15, 23, 42, 0.5);
+    border-bottom-color: rgba(148, 163, 184, 0.14);
   }
 
   .search-form input,
@@ -742,23 +970,39 @@ select {
   }
 
   .continuous-chord-grid {
-    background: rgba(15, 23, 42, 0.92);
-    border-top-color: rgba(148, 163, 184, 0.2);
-    border-left-color: rgba(148, 163, 184, 0.2);
-    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.14);
+    background: transparent;
+    border: none;
+    box-shadow: none;
   }
 
-  .measure-cell.shift {
-    background: rgba(15, 23, 42, 0.82);
-  }
-
+  .measure-cell.shift,
   .measure-cell.padding {
-    background: rgba(30, 64, 175, 0.18);
+    background: transparent;
   }
 
-  .measure-cell.measure-start,
-  .measure-cell.measure-end {
-    border-color: rgba(148, 163, 184, 0.68);
+  .measure-cell.measure-start {
+    border-left-color: rgba(148, 163, 184, 0.75);
+  }
+
+  .continuous-chord-grid > .measure-cell.measure-start:first-child {
+    border-left: none;
+  }
+
+  .measure-cell.chord-grid-row-wrap-bar {
+    border-right-color: rgba(148, 163, 184, 0.75);
+  }
+
+  .chord-tag {
+    color: var(--muted-dark);
+  }
+
+  .chord-playhead {
+    background: #60a5fa;
+    box-shadow: 0 0 8px rgba(96, 165, 250, 0.4);
+  }
+
+  .measure-cell.chord-grid-row-hline {
+    border-top-color: rgba(148, 163, 184, 0.28);
   }
 
   .diagram-dot {
@@ -769,6 +1013,40 @@ select {
 }
 
 @media (max-width: 960px) {
+  .results-layout {
+    flex-direction: column;
+  }
+
+  .results-sidebar {
+    position: fixed !important;
+    left: 12px;
+    right: auto;
+    top: auto;
+    bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+    transform: none;
+  }
+
+  .results-main {
+    padding-right: 0;
+    padding-bottom: clamp(110px, 13vh, 190px);
+  }
+
+  .chord-sidebar-panel {
+    width: 100%;
+  }
+
+  .chord-sidebar-panel-body {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 14px;
+  }
+
+  .chord-sidebar-card {
+    flex: 1;
+    min-width: 140px;
+  }
+
   .controls-grid,
   .selected-source,
   .panel-header,

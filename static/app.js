@@ -10,6 +10,11 @@ const state = {
   activeProgressionIndex: 0,
   currentVisualIndex: -1,
   chordPositions: {},
+  capo: 0, // Capo 0-5，預設 0 表示無移調
+  /** 點擊譜面後下一次 draw：藍線精確落在點擊的 x／列（避免 time 反算與格子對齊誤差） */
+  playheadClickSnap: null,
+  /** 播放中用 requestAnimationFrame 持續更新 playhead（比 timeupdate 流暢） */
+  playheadRafId: null,
 };
 
 const FIXED_BEAT_DETECTOR = "madmom";
@@ -17,6 +22,9 @@ const FIXED_CHORD_DETECTOR = "chord-cnn-lstm";
 
 const LOCAL_CHORD_DB_URL = "/static/vendor/chords/guitar.json";
 const LOCAL_CHORD_IMAGE_BASE = "/static/chord-diagrams";
+
+/** 和弦譜橫向一列放幾個小節（與 renderChordGrid 一致） */
+const CHORD_GRID_MEASURES_PER_ROW = 4;
 
 const loadingMessages = [
   "正在下載或接收音訊...",
@@ -41,6 +49,7 @@ const dom = {
   statusPanel: document.querySelector("#status-panel"),
   statusMessage: document.querySelector("#status-message"),
   resultsPanel: document.querySelector("#results-panel"),
+  chordSidebar: document.querySelector("#chord-sidebar"),
   resultTitle: document.querySelector("#result-title"),
   resultSubtitle: document.querySelector("#result-subtitle"),
   summaryChips: document.querySelector("#summary-chips"),
@@ -48,7 +57,11 @@ const dom = {
   analysisAudio: document.querySelector("#analysis-audio"),
   playbackStatus: document.querySelector("#playback-status"),
   chordGrid: document.querySelector("#chord-grid"),
+  currentChordDiagram: document.querySelector("#current-chord-diagram"),
+  nextChordDiagram: document.querySelector("#next-chord-diagram"),
+  nextChordText: document.querySelector("#next-chord-text"),
   guitarChords: document.querySelector("#guitar-chords"),
+  capoSelector: document.querySelector("#capo-selector"),
   rawOutput: document.querySelector("#raw-output"),
   tabs: document.querySelectorAll(".tab-button"),
   panels: document.querySelectorAll(".tab-panel"),
@@ -144,6 +157,73 @@ function escapeHtml(value) {
 
 function normalizeAccidentals(value) {
   return (value || "").replace(/♯/g, "#").replace(/♭/g, "b");
+}
+
+/**
+ * 將和弦移調指定半音數（用於 Capo 功能）
+ * @param {string} chordName - 原始和弦名稱，如 "C:maj"、"F#:min7/G"
+ * @param {number} semitones - 降低半音數（Capo 1 = 降 1、Capo 2 = 降 2，依此類推）
+ * @param {string} [accidentalPreference] - 升記號 "sharp" 或降記號 "flat"
+ * @returns {string} 移調後的和弦名稱
+ */
+function transposeChord(chordName, semitones, accidentalPreference) {
+  if (semitones === 0 || !chordName || ["N", "N/C", "N.C.", "NC"].includes(chordName)) {
+    return chordName;
+  }
+
+  const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  const notesWithFlats = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+  const normalize = (n) => normalizeAccidentals(n);
+  const noteIndex = (note, useFlats) => {
+    const arr = useFlats ? notesWithFlats : notes;
+    const idx = arr.findIndex((x) => normalize(x) === normalize(note));
+    return idx >= 0 ? idx : notes.indexOf(note);
+  };
+  const semitoneIndex = (idx, delta, useFlats) => {
+    const arr = useFlats ? notesWithFlats : notes;
+    return arr[(idx - delta + 12) % 12]; // delta 為正數時表示降半音（Capo 1 = 降 1）
+  };
+
+  const parts = chordName.split("/");
+  const mainPart = (parts[0] || "").trim();
+  const bassPart = (parts[1] || "").trim();
+
+  let root = "";
+  let quality = "";
+  if (mainPart.includes(":")) {
+    const [r, ...q] = mainPart.split(":");
+    root = r || "";
+    quality = q.join(":");
+  } else {
+    const match = mainPart.match(/^([A-G][#b♯♭]?)(.*)$/);
+    if (match) {
+      root = match[1] || "";
+      quality = match[2] || "";
+    } else {
+      root = mainPart;
+    }
+  }
+
+  const useFlats = accidentalPreference === "flat" || (root.includes("b") && accidentalPreference !== "sharp");
+  const rootIdx = noteIndex(root, useFlats);
+  if (rootIdx < 0) return chordName;
+
+  const newRoot = semitoneIndex(rootIdx, semitones, useFlats);
+  let mainResult = quality ? `${newRoot}:${quality}` : newRoot;
+
+  if (bassPart && /^[A-G][#b♯♭]?$/.test(normalize(bassPart))) {
+    const bassIdx = noteIndex(bassPart, useFlats);
+    if (bassIdx >= 0) {
+      const newBass = semitoneIndex(bassIdx, semitones, useFlats);
+      mainResult += `/${newBass}`;
+    } else {
+      mainResult += `/${bassPart}`;
+    }
+  } else if (bassPart) {
+    mainResult += `/${bassPart}`;
+  }
+
+  return mainResult;
 }
 
 function accidentalToUnicode(value) {
@@ -528,6 +608,23 @@ async function loadEngineStatus() {
   }
 }
 
+/**
+ * 將即時指形圖面板固定在 viewport（視窗）底部中央。
+ * 注意：若 #chord-sidebar 放在含 backdrop-filter 的 .panel 內，fixed 會失效（相對面板），故 HTML 已移出面板。
+ */
+function pinChordSidebar() {
+  const el = dom.chordSidebar;
+  if (!el) return;
+
+  el.style.position = "fixed";
+  el.style.bottom = "calc(12px + env(safe-area-inset-bottom))";
+  el.style.left = "50%";
+  el.style.right = "auto";
+  el.style.top = "auto";
+  el.style.transform = "translateX(-50%)";
+  el.style.zIndex = "20";
+}
+
 function updateSelectedSource() {
   if (state.selectedFile) {
     dom.selectedTitle.textContent = state.selectedFile.name;
@@ -709,6 +806,347 @@ function getCurrentVisualIndexForTime(analysis, currentTime) {
   return activeIndex;
 }
 
+/**
+ * 將 measures 展平成依 cell.index 排序的陣列（用於 playhead 與時間插值）
+ */
+function flattenGridCells(analysis) {
+  const measures = analysis.measures || [];
+  const out = [];
+  measures.forEach((measure) => {
+    measure.cells.forEach((cell) => {
+      out.push(cell);
+    });
+  });
+  out.sort((a, b) => a.index - b.index);
+  return out;
+}
+
+/**
+ * 取得有有效 time 的 beat cell 列表（依時間排序）
+ */
+function getChordGridColsPerRow(analysis) {
+  const ts = analysis && analysis.summary ? analysis.summary.timeSignature || 4 : 4;
+  return ts * CHORD_GRID_MEASURES_PER_ROW;
+}
+
+/**
+ * 取得某一列在 track 內的 top / height（與 getBoundingClientRect 對齊 scrollTop）
+ */
+function getRowPixelBoundsRelativeToTrack(track, analysis, rowIndex) {
+  const colsPerRow = getChordGridColsPerRow(analysis);
+  const start = rowIndex * colsPerRow;
+  const end = start + colsPerRow - 1;
+  const tr = track.getBoundingClientRect();
+  let minTop = Infinity;
+  let maxBottom = -Infinity;
+  for (let i = start; i <= end; i += 1) {
+    const el = track.querySelector(`[data-cell-index="${i}"]`);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    minTop = Math.min(minTop, r.top);
+    maxBottom = Math.max(maxBottom, r.bottom);
+  }
+  if (minTop === Infinity) return null;
+  return {
+    top: minTop - tr.top + track.scrollTop,
+    height: Math.max(4, maxBottom - minTop),
+  };
+}
+
+/**
+ * 該列所有格子的水平範圍（含 padding 格），用於點擊與 playhead 插值
+ */
+function getRowXContentSpanInTrack(track, analysis, rowIndex) {
+  const colsPerRow = getChordGridColsPerRow(analysis);
+  const start = rowIndex * colsPerRow;
+  const end = start + colsPerRow - 1;
+  const tr = track.getBoundingClientRect();
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (let i = start; i <= end; i += 1) {
+    const el = track.querySelector(`[data-cell-index="${i}"]`);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    minX = Math.min(minX, r.left - tr.left + track.scrollLeft);
+    maxX = Math.max(maxX, r.right - tr.left + track.scrollLeft);
+  }
+  if (minX === Infinity) return null;
+  return { minX, maxX };
+}
+
+/**
+ * 列內依「格子左緣 x」排序的 time anchor（僅有 beat time 的格）
+ */
+function collectRowTimeAnchorsInTrack(track, analysis, rowIndex) {
+  const colsPerRow = getChordGridColsPerRow(analysis);
+  const start = rowIndex * colsPerRow;
+  const end = start + colsPerRow - 1;
+  const tr = track.getBoundingClientRect();
+  const cells = flattenGridCells(analysis);
+  const anchors = [];
+  for (let idx = start; idx <= end; idx += 1) {
+    const el = track.querySelector(`[data-cell-index="${idx}"]`);
+    if (!el) continue;
+    const c = cells.find((x) => x.index === idx);
+    if (!c || c.time === null || c.time === undefined || !Number.isFinite(Number(c.time))) {
+      continue;
+    }
+    const r = el.getBoundingClientRect();
+    const x = r.left - tr.left + track.scrollLeft;
+    anchors.push({ x, time: Number(c.time), index: idx });
+  }
+  anchors.sort((a, b) => a.x - b.x || a.index - b.index);
+  return anchors;
+}
+
+/** 下一列第一個有 time 的 anchor 時間（用於本列尾端 time→x 的 endT，避免誤用整首 duration 導致藍線卡在列尾） */
+function getNextRowFirstAnchorTime(track, analysis, rowIndex) {
+  const anchors = collectRowTimeAnchorsInTrack(track, analysis, rowIndex + 1);
+  if (!anchors.length) return null;
+  return anchors[0].time;
+}
+
+/** 上一列最後一個 anchor 時間（用於本列開頭與點擊反算） */
+function getPrevRowLastAnchorTime(track, analysis, rowIndex) {
+  if (rowIndex <= 0) return null;
+  const anchors = collectRowTimeAnchorsInTrack(track, analysis, rowIndex - 1);
+  if (!anchors.length) return null;
+  return anchors[anchors.length - 1].time;
+}
+
+/**
+ * 由點擊的水平位置（track 內容座標）對應 seek 時間（與 timeToXInRow 互為反函數）
+ */
+function xInTrackToTimeInRow(track, analysis, rowIndex, xInTrack) {
+  const anchors = collectRowTimeAnchorsInTrack(track, analysis, rowIndex);
+  const span = getRowXContentSpanInTrack(track, analysis, rowIndex);
+  const audio = dom.analysisAudio;
+  const duration = audio && Number.isFinite(audio.duration) ? audio.duration : null;
+
+  if (!anchors.length || !span) return null;
+
+  const { minX: rowMin, maxX: rowMax } = span;
+  const x = Math.max(rowMin, Math.min(rowMax, xInTrack));
+
+  if (x <= anchors[0].x) {
+    const prevLast = getPrevRowLastAnchorTime(track, analysis, rowIndex);
+    if (prevLast !== null && prevLast < anchors[0].time) {
+      const denom = anchors[0].x - rowMin;
+      if (denom <= 0) return prevLast;
+      const frac = (x - rowMin) / denom;
+      return prevLast + Math.max(0, Math.min(1, frac)) * (anchors[0].time - prevLast);
+    }
+    const denom = anchors[0].x - rowMin;
+    if (denom <= 0) return Math.max(0, anchors[0].time);
+    const frac = (x - rowMin) / denom;
+    return Math.max(0, anchors[0].time * frac);
+  }
+
+  const last = anchors[anchors.length - 1];
+  if (x >= last.x) {
+    const nextFirst = getNextRowFirstAnchorTime(track, analysis, rowIndex);
+    const endT =
+      nextFirst !== null && nextFirst > last.time
+        ? nextFirst
+        : duration && duration > last.time
+          ? duration
+          : last.time + 0.25;
+    const denom = rowMax - last.x;
+    if (denom <= 0) return last.time;
+    const frac = (x - last.x) / denom;
+    return Math.min(endT, last.time + frac * (endT - last.time));
+  }
+
+  for (let i = 0; i < anchors.length - 1; i += 1) {
+    const A = anchors[i];
+    const B = anchors[i + 1];
+    if (x < B.x) {
+      const denom = B.x - A.x;
+      const frac = denom > 0 ? (x - A.x) / denom : 0;
+      return A.time + frac * (B.time - A.time);
+    }
+  }
+  return last.time;
+}
+
+/**
+ * 由播放時間反算 playhead 水平位置（與 xInTrackToTimeInRow 同一套幾何）
+ */
+function timeToXInTrackInRow(track, analysis, rowIndex, t) {
+  const anchors = collectRowTimeAnchorsInTrack(track, analysis, rowIndex);
+  const span = getRowXContentSpanInTrack(track, analysis, rowIndex);
+  const audio = dom.analysisAudio;
+  const duration = audio && Number.isFinite(audio.duration) ? audio.duration : null;
+
+  if (!anchors.length || !span) return null;
+
+  const { minX: rowMin, maxX: rowMax } = span;
+  const time = Math.max(0, t || 0);
+
+  if (time <= anchors[0].time) {
+    const prevLast = getPrevRowLastAnchorTime(track, analysis, rowIndex);
+    if (prevLast !== null && prevLast < anchors[0].time) {
+      const denom = anchors[0].time - prevLast;
+      if (denom <= 0) return anchors[0].x;
+      const frac = (time - prevLast) / denom;
+      return rowMin + Math.max(0, Math.min(1, frac)) * (anchors[0].x - rowMin);
+    }
+    const denom = anchors[0].time;
+    if (denom <= 0) return rowMin;
+    const frac = time / denom;
+    return rowMin + frac * (anchors[0].x - rowMin);
+  }
+
+  const last = anchors[anchors.length - 1];
+  if (time >= last.time) {
+    const nextFirst = getNextRowFirstAnchorTime(track, analysis, rowIndex);
+    const endT =
+      nextFirst !== null && nextFirst > last.time
+        ? nextFirst
+        : duration && duration > last.time
+          ? duration
+          : last.time + 0.25;
+    const denom = endT - last.time;
+    if (denom <= 0) return last.x;
+    const frac = (time - last.time) / denom;
+    return last.x + Math.max(0, Math.min(1, frac)) * (rowMax - last.x);
+  }
+
+  for (let i = 0; i < anchors.length - 1; i += 1) {
+    const A = anchors[i];
+    const B = anchors[i + 1];
+    if (time < B.time) {
+      const denom = B.time - A.time;
+      const frac = denom > 0 ? (time - A.time) / denom : 0;
+      return A.x + frac * (B.x - A.x);
+    }
+  }
+  return last.x;
+}
+
+/**
+ * 由螢幕 Y 判斷點在哪一列（viewport 座標）
+ */
+function rowIndexFromPointerClientY(track, analysis, clientY) {
+  const colsPerRow = getChordGridColsPerRow(analysis);
+  const cells = flattenGridCells(analysis);
+  const maxIdx = cells.reduce((m, c) => Math.max(m, c.index), 0);
+  const maxRow = Math.floor(maxIdx / colsPerRow);
+  for (let row = 0; row <= maxRow; row += 1) {
+    const start = row * colsPerRow;
+    const end = start + colsPerRow - 1;
+    let minTop = Infinity;
+    let maxBottom = -Infinity;
+    for (let i = start; i <= end; i += 1) {
+      const el = track.querySelector(`[data-cell-index="${i}"]`);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      minTop = Math.min(minTop, r.top);
+      maxBottom = Math.max(maxBottom, r.bottom);
+    }
+    if (minTop === Infinity) continue;
+    if (clientY >= minTop && clientY < maxBottom) {
+      return row;
+    }
+  }
+  return null;
+}
+
+/**
+ * 計算 playhead 在 chord-grid-track 內的水平座標（px，相對於可捲動內容左緣；與點擊座標同一套列內插值）
+ */
+function computeChordPlayheadX(track, analysis, currentTime) {
+  if (!track || !analysis) return null;
+  const colsPerRow = getChordGridColsPerRow(analysis);
+  let vi = getCurrentVisualIndexForTime(analysis, currentTime || 0);
+  if (vi < 0) vi = 0;
+  const row = Math.floor(vi / colsPerRow);
+  return timeToXInTrackInRow(track, analysis, row, Math.max(0, currentTime || 0));
+}
+
+/**
+ * 計算目前播放時間對應的「列」在 track 內的垂直範圍（playhead 只畫在該列內）
+ */
+function computeChordPlayheadRowVerticalLayout(track, analysis, currentTime) {
+  const colsPerRow = getChordGridColsPerRow(analysis);
+  let vi = getCurrentVisualIndexForTime(analysis, currentTime || 0);
+  if (vi < 0) vi = 0;
+  const row = Math.floor(vi / colsPerRow);
+  return getRowPixelBoundsRelativeToTrack(track, analysis, row);
+}
+
+/**
+ * 更新和弦譜上的垂直 playhead（播放位置線），不重新渲染整個 grid。
+ */
+/**
+ * 播放時以 rAF 高頻率更新藍線；暫停時停止以省資源。
+ */
+function chordPlayheadRafTick() {
+  state.playheadRafId = null;
+  if (!dom.analysisAudio || dom.analysisAudio.paused || !state.analysis) {
+    return;
+  }
+  updateChordPlayhead(state.analysis);
+  state.playheadRafId = window.requestAnimationFrame(chordPlayheadRafTick);
+}
+
+function startChordPlayheadRaf() {
+  stopChordPlayheadRaf();
+  if (!dom.analysisAudio || dom.analysisAudio.paused || !state.analysis) {
+    return;
+  }
+  state.playheadRafId = window.requestAnimationFrame(chordPlayheadRafTick);
+}
+
+function stopChordPlayheadRaf() {
+  if (state.playheadRafId !== null) {
+    window.cancelAnimationFrame(state.playheadRafId);
+    state.playheadRafId = null;
+  }
+}
+
+function updateChordPlayhead(analysis) {
+  const track = dom.chordGrid?.querySelector(".chord-grid-track");
+  const playhead = dom.chordGrid?.querySelector(".chord-playhead");
+  if (!track || !playhead || !analysis) {
+    return;
+  }
+
+  if (!dom.analysisAudio || !analysis.playbackUrl) {
+    playhead.style.display = "none";
+    return;
+  }
+
+  const t = dom.analysisAudio.currentTime || 0;
+
+  if (state.playheadClickSnap) {
+    const snap = state.playheadClickSnap;
+    state.playheadClickSnap = null;
+    const rowLayout = getRowPixelBoundsRelativeToTrack(track, analysis, snap.row);
+    if (rowLayout !== null) {
+      playhead.style.display = "block";
+      playhead.style.left = `${snap.x}px`;
+      playhead.style.top = `${rowLayout.top}px`;
+      playhead.style.height = `${rowLayout.height}px`;
+      playhead.style.bottom = "auto";
+      return;
+    }
+  }
+
+  const x = computeChordPlayheadX(track, analysis, t);
+  const rowLayout = computeChordPlayheadRowVerticalLayout(track, analysis, t);
+  if (x === null || rowLayout === null) {
+    playhead.style.display = "none";
+    return;
+  }
+
+  playhead.style.display = "block";
+  playhead.style.left = `${x}px`;
+  playhead.style.top = `${rowLayout.top}px`;
+  playhead.style.height = `${rowLayout.height}px`;
+  playhead.style.bottom = "auto";
+}
+
 function getCurrentChordName(analysis, visualIndex) {
   if (!analysis.chordGridData || !analysis.chordGridData.chords) return "";
   return analysis.chordGridData.chords[visualIndex] || "";
@@ -731,26 +1169,56 @@ function syncPlaybackState(analysis) {
   if (!dom.analysisAudio) return;
 
   const currentTime = dom.analysisAudio.currentTime || 0;
+  const previousVisualIndex = state.currentVisualIndex;
   state.currentVisualIndex = getCurrentVisualIndexForTime(analysis, currentTime);
   const currentChord = getCurrentChordName(analysis, state.currentVisualIndex);
 
   if (currentChord) {
     const progression = getChordProgression(analysis);
-    const matchedIndex = progression.findIndex((item) => item.chord === currentChord);
-    if (matchedIndex >= 0) {
-      state.activeProgressionIndex = matchedIndex;
+    let bestIndex = -1;
+    let bestTime = -Infinity;
+    progression.forEach((item, index) => {
+      if (item.time === null || item.time === undefined) {
+        return;
+      }
+      if (item.time <= currentTime && item.time >= bestTime) {
+        bestTime = item.time;
+        bestIndex = index;
+      }
+    });
+    if (bestIndex >= 0) {
+      state.activeProgressionIndex = bestIndex;
     }
   }
 
-  renderChordGrid(analysis);
-  void renderGuitarChords(analysis);
+  if (previousVisualIndex !== state.currentVisualIndex) {
+    void renderGuitarChords(analysis);
+    void renderCurrentNextChordDiagrams(analysis);
+  }
+
+  updateChordPlayhead(analysis);
 
   if (dom.playbackStatus) {
     const currentLabel = formatSeconds(currentTime);
+    const displayChord = state.capo
+      ? transposeChord(currentChord, state.capo, state.accidentalPreference)
+      : currentChord;
     const chordLabel = currentChord
-      ? `目前和弦：${stripHtml(formatChordDisplay(currentChord, state.accidentalPreference))}`
+      ? `目前和弦：${stripHtml(formatChordDisplay(displayChord, state.accidentalPreference))}`
       : "目前尚未進入和弦區段";
     dom.playbackStatus.textContent = `${currentLabel} · ${chordLabel}`;
+  }
+
+  if (dom.nextChordText) {
+    const nextChord = getNextChordName(analysis);
+    if (!nextChord) {
+      dom.nextChordText.innerHTML = "--";
+    } else {
+      const nextDisplayChord = state.capo
+        ? transposeChord(nextChord, state.capo, state.accidentalPreference)
+        : nextChord;
+      dom.nextChordText.innerHTML = formatChordDisplay(nextDisplayChord, state.accidentalPreference);
+    }
   }
 }
 
@@ -758,6 +1226,7 @@ function setupAudioPlayer(analysis) {
   if (!dom.analysisAudio) return;
 
   const audio = dom.analysisAudio;
+  stopChordPlayheadRaf();
   audio.pause();
   audio.currentTime = 0;
   state.currentVisualIndex = -1;
@@ -774,13 +1243,20 @@ function setupAudioPlayer(analysis) {
   audio.src = analysis.playbackUrl;
   audio.load();
   audio.ontimeupdate = () => syncPlaybackState(analysis);
-  audio.onplay = () => syncPlaybackState(analysis);
-  audio.onpause = () => syncPlaybackState(analysis);
+  audio.onplay = () => {
+    syncPlaybackState(analysis);
+    startChordPlayheadRaf();
+  };
+  audio.onpause = () => {
+    stopChordPlayheadRaf();
+    syncPlaybackState(analysis);
+  };
   audio.onseeked = () => syncPlaybackState(analysis);
   audio.onended = () => {
+    stopChordPlayheadRaf();
     state.currentVisualIndex = -1;
-    renderChordGrid(analysis);
     void renderGuitarChords(analysis);
+    updateChordPlayhead(analysis);
     if (dom.playbackStatus) {
       dom.playbackStatus.textContent = "播放已結束";
     }
@@ -794,34 +1270,47 @@ function setupAudioPlayer(analysis) {
 function renderChordGrid(analysis) {
   const measures = analysis.measures || [];
   const timeSignature = analysis.summary.timeSignature || 4;
-  const measuresPerRow = 4;
+  const measuresPerRow = CHORD_GRID_MEASURES_PER_ROW;
+  const colsPerRow = timeSignature * measuresPerRow;
   if (!measures.length) {
     dom.chordGrid.innerHTML = '<p class="diagram-note">目前沒有可顯示的小節資料。</p>';
     return;
   }
 
+  let maxCellIndex = -1;
+  measures.forEach((measure) => {
+    measure.cells.forEach((cell) => {
+      maxCellIndex = Math.max(maxCellIndex, cell.index);
+    });
+  });
+
   const gridHtml = measures
     .map((measure) => measure.cells
       .map((cell, cellIndex) => {
+        const isLastCellInGridRow = cell.index % colsPerRow === colsPerRow - 1;
+        const isRowWrapToNextLine = isLastCellInGridRow && cell.index < maxCellIndex;
         const classes = [
           "measure-cell",
           cell.isShift ? "shift" : "",
           cell.isPadding ? "padding" : "",
-          state.currentVisualIndex === cell.index ? "active" : "",
           cellIndex === 0 ? "measure-start" : "",
-          cellIndex === measure.cells.length - 1 ? "measure-end" : "",
+          isRowWrapToNextLine ? "chord-grid-row-wrap-bar" : "",
+          Math.floor(cell.index / colsPerRow) >= 1 ? "chord-grid-row-hline" : "",
         ]
           .filter(Boolean)
           .join(" ");
+        const displayChord = state.capo
+          ? transposeChord(cell.chord, state.capo, state.accidentalPreference)
+          : cell.chord;
         const chordLabel = shouldDisplayChordAtIndex(analysis, cell)
-          ? formatChordDisplay(cell.chord, state.accidentalPreference)
+          ? formatChordDisplay(displayChord, state.accidentalPreference)
           : "";
         const seekAttr = cell.time === null || cell.time === undefined ? "" : `data-seek-time="${cell.time}"`;
 
         return `
-          <button class="${classes}" type="button" ${seekAttr}>
+          <button class="${classes}" type="button" data-cell-index="${cell.index}" ${seekAttr}>
             <span class="chord-tag">${chordLabel}</span>
-            <span class="time-tag">${state.currentVisualIndex === cell.index && cell.time !== null && cell.time !== undefined ? formatSeconds(cell.time) : ""}</span>
+            <span class="time-tag" aria-hidden="true"></span>
           </button>
         `;
       })
@@ -829,20 +1318,50 @@ function renderChordGrid(analysis) {
     .join("");
 
   dom.chordGrid.innerHTML = `
-    <div class="continuous-chord-grid" style="grid-template-columns: repeat(${timeSignature * measuresPerRow}, minmax(0, 1fr));">
-      ${gridHtml}
+    <div class="chord-grid-track">
+      <div class="continuous-chord-grid" style="grid-template-columns: repeat(${timeSignature * measuresPerRow}, minmax(0, 1fr));">
+        ${gridHtml}
+      </div>
+      <div class="chord-playhead" aria-hidden="true"></div>
     </div>
   `;
+  const trackEl = dom.chordGrid.querySelector(".chord-grid-track");
+  if (trackEl) {
+    trackEl.addEventListener(
+      "scroll",
+      () => {
+        updateChordPlayhead(analysis);
+      },
+      { passive: true },
+    );
+  }
+  window.requestAnimationFrame(() => updateChordPlayhead(analysis));
+}
 
-  dom.chordGrid.querySelectorAll("[data-seek-time]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!dom.analysisAudio) return;
-      const seekTime = Number(button.dataset.seekTime || 0);
-      if (Number.isFinite(seekTime)) {
-        dom.analysisAudio.currentTime = seekTime;
-        syncPlaybackState(analysis);
-      }
-    });
+function setupChordGridSeek() {
+  dom.chordGrid.addEventListener("pointerdown", (event) => {
+    if (!state.analysis || !dom.analysisAudio) return;
+    const track = dom.chordGrid.querySelector(".chord-grid-track");
+    if (!track || !(event.target instanceof Element)) return;
+    if (!track.contains(event.target)) return;
+
+    const row = rowIndexFromPointerClientY(track, state.analysis, event.clientY);
+    if (row === null) return;
+
+    const tr = track.getBoundingClientRect();
+    const xInTrack = event.clientX - tr.left + track.scrollLeft;
+    const seekTime = xInTrackToTimeInRow(track, state.analysis, row, xInTrack);
+    if (seekTime === null || !Number.isFinite(seekTime)) return;
+
+    const dur = dom.analysisAudio.duration;
+    let clamped = Math.max(0, seekTime);
+    if (Number.isFinite(dur) && dur > 0) {
+      clamped = Math.min(clamped, dur);
+    }
+
+    state.playheadClickSnap = { x: xInTrack, row };
+    dom.analysisAudio.currentTime = clamped;
+    syncPlaybackState(state.analysis);
   });
 }
 
@@ -991,6 +1510,85 @@ function getFocusedChordName(analysis) {
   return progression[state.activeProgressionIndex].chord || "";
 }
 
+/**
+ * 取得下一個和弦名稱（用於側邊欄「下個和弦」指形圖）
+ * @param {Object} analysis - 分析結果
+ * @returns {string} 下一個和弦名稱，若無則回傳空字串
+ */
+function getNextChordName(analysis) {
+  const progression = getChordProgression(analysis);
+  if (!progression.length) return "";
+  const nextIndex = state.activeProgressionIndex + 1;
+  if (nextIndex >= progression.length) return "";
+  return progression[nextIndex].chord || "";
+}
+
+/**
+ * 將單一和弦指形圖渲染至指定容器（用於側邊欄）
+ * @param {HTMLElement} container - 目標 DOM 元素
+ * @param {string} chordName - 和弦名稱（如 "C:maj"）
+ * @param {string} placeholder - 無和弦時顯示的文字
+ */
+async function renderSingleChordDiagram(container, chordName, placeholder) {
+  if (!container) return;
+  if (!chordName || ["N", "N/C", "N.C.", "NC"].includes(chordName)) {
+    container.innerHTML = `<p class="chord-sidebar-empty">${placeholder}</p>`;
+    return;
+  }
+
+  const displayChord = state.capo
+    ? transposeChord(chordName, state.capo, state.accidentalPreference)
+    : chordName;
+
+  const chordData = await getChordDiagramData(displayChord);
+  if (chordData && chordData.positions && chordData.positions.length) {
+    const positionIndex = Math.min(getCurrentChordPosition(chordName), chordData.positions.length - 1);
+    container.innerHTML = `
+      <div class="chord-sidebar-diagram-inner">
+        <div class="chord-sidebar-chord-name">${formatChordDisplay(displayChord, state.accidentalPreference)}</div>
+        <div class="chord-sidebar-svg-wrap">${buildChordDiagramSvg(chordData, positionIndex)}</div>
+      </div>
+    `;
+    return;
+  }
+
+  const imageUrl = await resolveChordDiagramImage(displayChord);
+  if (imageUrl) {
+    container.innerHTML = `
+      <div class="chord-sidebar-diagram-inner">
+        <div class="chord-sidebar-chord-name">${formatChordDisplay(displayChord, state.accidentalPreference)}</div>
+        <div class="chord-sidebar-image-wrap">
+          <img class="chord-sidebar-image" src="${imageUrl}" alt="${escapeHtml(displayChord)} chord" loading="lazy" />
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="chord-sidebar-diagram-inner">
+      <div class="chord-sidebar-chord-name">${formatChordDisplay(displayChord, state.accidentalPreference)}</div>
+      <p class="chord-sidebar-empty">找不到指形圖</p>
+    </div>
+  `;
+}
+
+/**
+ * 渲染側邊欄：當前和弦與下個和弦的指形圖
+ * @param {Object} analysis - 分析結果
+ */
+async function renderCurrentNextChordDiagrams(analysis) {
+  if (!analysis || !dom.currentChordDiagram || !dom.nextChordDiagram) return;
+
+  const currentChord = getCurrentChordName(analysis, state.currentVisualIndex) || getFocusedChordName(analysis);
+  const nextChord = getNextChordName(analysis);
+
+  await Promise.all([
+    renderSingleChordDiagram(dom.currentChordDiagram, currentChord, "尚未進入和弦區段"),
+    renderSingleChordDiagram(dom.nextChordDiagram, nextChord, "無下一個和弦"),
+  ]);
+}
+
 function getChordOrderForSummary(analysis) {
   const uniqueChords = analysis.uniqueChords || [];
   const focusedChord = getFocusedChordName(analysis);
@@ -1027,13 +1625,16 @@ async function renderGuitarChords(analysis) {
 
   const cards = await Promise.all(
     orderedChords.map(async (chord) => {
-      const chordData = await getChordDiagramData(chord);
+      const displayChord = state.capo
+        ? transposeChord(chord, state.capo, state.accidentalPreference)
+        : chord;
+      const chordData = await getChordDiagramData(displayChord);
       if (chordData && chordData.positions && chordData.positions.length) {
         const positionIndex = Math.min(getCurrentChordPosition(chord), chordData.positions.length - 1);
         return `
           <section class="diagram-card ${focusedChord === chord ? "focused" : ""}">
             <div class="diagram-header">
-              <h4>${formatChordDisplay(chord, state.accidentalPreference)}</h4>
+              <h4>${formatChordDisplay(displayChord, state.accidentalPreference)}</h4>
               ${focusedChord === chord ? '<span class="diagram-time">當前和弦</span>' : ""}
             </div>
             <div class="diagram-canvas">
@@ -1050,12 +1651,12 @@ async function renderGuitarChords(analysis) {
         `;
       }
 
-      const imageUrl = await resolveChordDiagramImage(chord);
+      const imageUrl = await resolveChordDiagramImage(displayChord);
       if (imageUrl) {
         return `
           <section class="diagram-card ${focusedChord === chord ? "focused" : ""}">
             <div class="diagram-header">
-              <h4>${formatChordDisplay(chord, state.accidentalPreference)}</h4>
+              <h4>${formatChordDisplay(displayChord, state.accidentalPreference)}</h4>
               ${focusedChord === chord ? '<span class="diagram-time">當前和弦</span>' : ""}
             </div>
             <div class="diagram-image-wrap">
@@ -1068,7 +1669,7 @@ async function renderGuitarChords(analysis) {
       return `
         <section class="diagram-card ${focusedChord === chord ? "focused" : ""}">
           <div class="diagram-header">
-            <h4>${formatChordDisplay(chord, state.accidentalPreference)}</h4>
+            <h4>${formatChordDisplay(displayChord, state.accidentalPreference)}</h4>
             ${focusedChord === chord ? '<span class="diagram-time">當前和弦</span>' : ""}
           </div>
           <p class="diagram-note">找不到對應的 chord diagram。</p>
@@ -1086,6 +1687,8 @@ async function renderAnalysis(analysis) {
   state.accidentalPreference = getAnalysisAccidentalPreference(analysis);
   state.currentVisualIndex = -1;
   state.activeProgressionIndex = 0;
+  state.capo = 0;
+  if (dom.capoSelector) dom.capoSelector.value = "0";
   dom.resultTitle.textContent = analysis.title;
   dom.resultSubtitle.textContent = `共偵測 ${analysis.summary.totalChords} 個和弦事件，分為整首歌和弦譜、全部和弦指法圖與 Raw Data 三個頁面。`;
   renderSummaryChips(analysis);
@@ -1093,8 +1696,13 @@ async function renderAnalysis(analysis) {
   setupAudioPlayer(analysis);
   renderChordGrid(analysis);
   await renderGuitarChords(analysis);
+  await renderCurrentNextChordDiagrams(analysis);
   dom.rawOutput.textContent = JSON.stringify(analysis.raw, null, 2);
   dom.resultsPanel.classList.remove("hidden");
+  if (dom.chordSidebar) {
+    dom.chordSidebar.classList.remove("hidden");
+    pinChordSidebar();
+  }
 }
 
 async function handleAnalyze() {
@@ -1112,6 +1720,9 @@ async function handleAnalyze() {
   }
 
   dom.resultsPanel.classList.add("hidden");
+  if (dom.chordSidebar) {
+    dom.chordSidebar.classList.add("hidden");
+  }
   dom.analyzeButton.disabled = true;
   startLoading();
 
@@ -1131,6 +1742,19 @@ async function handleAnalyze() {
     stopLoading();
     updateSelectedSource();
   }
+}
+
+function setupCapoSelector() {
+  if (!dom.capoSelector) return;
+  dom.capoSelector.addEventListener("change", () => {
+    state.capo = parseInt(dom.capoSelector.value, 10) || 0;
+    if (state.analysis) {
+      renderChordGrid(state.analysis);
+      void renderGuitarChords(state.analysis);
+      void renderCurrentNextChordDiagrams(state.analysis);
+      syncPlaybackState(state.analysis);
+    }
+  });
 }
 
 function setupTabs() {
@@ -1160,5 +1784,14 @@ dom.searchForm.addEventListener("submit", handleSearch);
 dom.analyzeButton.addEventListener("click", handleAnalyze);
 setupTabs();
 setupFileInput();
+setupChordGridSeek();
+setupCapoSelector();
 updateSelectedSource();
+pinChordSidebar();
 loadEngineStatus();
+
+window.addEventListener("resize", () => {
+  if (state.analysis) {
+    updateChordPlayhead(state.analysis);
+  }
+});
