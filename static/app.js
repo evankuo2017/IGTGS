@@ -17,6 +17,8 @@ const state = {
   playheadClickSnap: null,
   /** 播放中用 requestAnimationFrame 持續更新 playhead（比 timeupdate 流暢） */
   playheadRafId: null,
+  /** setupAudioPlayer 以 blob: 載入時需 revoke，避免洩漏與重複指派失敗 */
+  playbackObjectUrl: null,
 };
 
 const FIXED_BEAT_DETECTOR = "madmom";
@@ -1225,7 +1227,21 @@ function syncPlaybackState(analysis) {
   }
 }
 
-function setupAudioPlayer(analysis) {
+function revokePlaybackObjectUrl() {
+  if (state.playbackObjectUrl) {
+    try {
+      URL.revokeObjectURL(state.playbackObjectUrl);
+    } catch {
+      /* ignore */
+    }
+    state.playbackObjectUrl = null;
+  }
+}
+
+/**
+ * 優先以 fetch → Blob → blob: URL 載入，讓瀏覽器依 HTTP Content-Type 解碼，避開 <audio src> 對 webm/副檔名的相容問題。
+ */
+async function setupAudioPlayer(analysis) {
   if (!dom.analysisAudio) return;
 
   const audio = dom.analysisAudio;
@@ -1233,9 +1249,12 @@ function setupAudioPlayer(analysis) {
   audio.pause();
   audio.currentTime = 0;
   state.currentVisualIndex = -1;
+  audio.onerror = null;
+  revokePlaybackObjectUrl();
 
   if (!analysis.playbackUrl) {
     audio.removeAttribute("src");
+    audio.querySelectorAll("source").forEach((el) => el.remove());
     audio.load();
     if (dom.playbackStatus) {
       dom.playbackStatus.textContent = "目前來源沒有可播放音訊";
@@ -1243,10 +1262,61 @@ function setupAudioPlayer(analysis) {
     return;
   }
 
-  audio.src = analysis.playbackUrl;
+  const rawUrl = analysis.playbackUrl;
+  const absoluteUrl =
+    rawUrl.startsWith("http://") || rawUrl.startsWith("https://") || rawUrl.startsWith("//")
+      ? rawUrl
+      : `${window.location.origin}${rawUrl.startsWith("/") ? "" : "/"}${rawUrl}`;
+
+  audio.querySelectorAll("source").forEach((el) => el.remove());
+  audio.removeAttribute("src");
+
+  if (dom.playbackStatus) {
+    dom.playbackStatus.textContent = "正在載入音訊…";
+  }
+
+  let loadError = null;
+  try {
+    const res = await fetch(absoluteUrl, {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText || ""}`.trim());
+    }
+    const blob = await res.blob();
+    if (!blob.size) {
+      throw new Error("音訊檔大小為 0");
+    }
+    state.playbackObjectUrl = URL.createObjectURL(blob);
+    audio.src = state.playbackObjectUrl;
+  } catch (err) {
+    loadError = err;
+    console.warn("IGTGS: fetch→blob 載入音訊失敗，改為直接 URL", err);
+    audio.src = absoluteUrl;
+    if (dom.playbackStatus) {
+      dom.playbackStatus.textContent = `已改為直接連線載入。若仍無法播放：${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
   audio.load();
+
+  audio.onerror = () => {
+    if (!dom.playbackStatus) return;
+    const code = audio.error ? audio.error.code : "?";
+    const mediaErr =
+      audio.error && audio.error.message ? `（${audio.error.message}）` : "";
+    const extra = loadError
+      ? `；fetch 階段：${loadError instanceof Error ? loadError.message : String(loadError)}`
+      : "";
+    dom.playbackStatus.textContent = `音訊無法播放：媒體錯誤碼 ${code}${mediaErr}。請確認 Network 中 /media 為 200、伺服器與瀏覽器同源，或改上傳 MP3。${extra}`;
+  };
+
   audio.ontimeupdate = () => syncPlaybackState(analysis);
   audio.onplay = () => {
+    if (dom.playbackStatus) {
+      dom.playbackStatus.textContent = "可開始播放並同步查看目前和弦位置";
+    }
     syncPlaybackState(analysis);
     startChordPlayheadRaf();
   };
@@ -1265,7 +1335,7 @@ function setupAudioPlayer(analysis) {
     }
   };
 
-  if (dom.playbackStatus) {
+  if (dom.playbackStatus && !loadError) {
     dom.playbackStatus.textContent = "可開始播放並同步查看目前和弦位置";
   }
 }
@@ -1279,13 +1349,37 @@ function getRefinedGridVisualIndexSet(analysis) {
 function syncRefineHighlightToggleUi(analysis) {
   const btn = dom.refineResultToggle;
   if (!btn) return;
+  const ref = analysis && analysis.raw && analysis.raw.chordRefine;
+  const beats = ref && Array.isArray(ref.beats) ? ref.beats : [];
+  const hasReport = beats.length > 0;
   const refinedSet = getRefinedGridVisualIndexSet(analysis);
   const hasRefined = refinedSet.size > 0;
-  btn.disabled = !hasRefined;
+  const serverHint =
+    analysis && typeof analysis.refineUserHint === "string" && analysis.refineUserHint.trim()
+      ? analysis.refineUserHint.trim()
+      : "";
+
+  // 只要有 chordRefine 逐拍報告即可按（音檔與 refine 是否成功改由點擊或 tooltip 說明）
+  btn.disabled = !hasReport;
+
   if (!hasRefined) {
     state.refineHighlightActive = false;
     btn.setAttribute("aria-pressed", "false");
     btn.classList.remove("active");
+  }
+
+  if (!hasReport) {
+    btn.title = "請先完成分析後再使用 Refine result。";
+    return;
+  }
+
+  if (hasRefined) {
+    btn.title = "顯示／隱藏有經 Refiner 更新的和弦格（紅框）";
+  } else {
+    const base =
+      serverHint ||
+      "目前沒有任何拍通過 ChordRefiner。請確認 igtgs_backend/models/ChordRefiner/best_chord_model.pth，且該拍為 maj/maj7/min/min7、refiner 信心≥0.5。詳見 Raw Data → chordRefine。";
+    btn.title = `本次無可標示的紅框格：${base}（點擊可再次顯示說明）`;
   }
 }
 
@@ -1726,7 +1820,7 @@ async function renderAnalysis(analysis) {
   dom.resultSubtitle.textContent = `共偵測 ${analysis.summary.totalChords} 個和弦事件，分為整首歌和弦譜、全部和弦指法圖與 Raw Data 三個頁面。`;
   renderSummaryChips(analysis);
   renderSummaryCards(analysis);
-  setupAudioPlayer(analysis);
+  await setupAudioPlayer(analysis);
   renderChordGrid(analysis);
   await renderGuitarChords(analysis);
   await renderCurrentNextChordDiagrams(analysis);
@@ -1795,6 +1889,16 @@ function setupRefineHighlightToggle() {
   if (!btn) return;
   btn.addEventListener("click", () => {
     if (btn.disabled) return;
+    const refinedSet = getRefinedGridVisualIndexSet(state.analysis);
+    if (refinedSet.size === 0) {
+      const hint =
+        (state.analysis &&
+          typeof state.analysis.refineUserHint === "string" &&
+          state.analysis.refineUserHint.trim()) ||
+        "沒有任何拍通過 Chord Refiner。請開啟 Raw Data → chordRefine 查看各筆 skipReason。";
+      window.alert(hint);
+      return;
+    }
     state.refineHighlightActive = !state.refineHighlightActive;
     btn.setAttribute("aria-pressed", state.refineHighlightActive ? "true" : "false");
     btn.classList.toggle("active", state.refineHighlightActive);

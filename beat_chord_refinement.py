@@ -19,8 +19,14 @@ from grid_builder import synchronize_chords, to_beat_info
 _log = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
-REFINER_DIR = BASE_DIR / "chord_refiner"
-# 可透過環境變數指定權重路徑
+
+
+def _igtgs_backend_dir() -> Path:
+    return Path(os.environ.get("IGTGS_BACKEND_DIR", str(BASE_DIR / "igtgs_backend"))).resolve()
+
+
+# ChordRefiner 與 Chord-CNN-LSTM 並列於 igtgs_backend/models/
+REFINER_DIR = _igtgs_backend_dir() / "models" / "ChordRefiner"
 DEFAULT_REFINER_WEIGHTS = REFINER_DIR / "best_chord_model.pth"
 
 REFINE_QUALITIES = frozenset({"maj", "maj7", "min", "min7"})
@@ -28,10 +34,11 @@ REFINE_QUALITIES = frozenset({"maj", "maj7", "min", "min7"})
 REFINER_CONFIDENCE_MIN = 0.5
 
 
-def _prepare_refiner_imports() -> None:
-    rd = str(REFINER_DIR)
-    if rd not in sys.path:
-        sys.path.insert(0, rd)
+def _ensure_igtgs_backend_on_path() -> None:
+    """讓 models.ChordRefiner 可作為套件匯入（與 analysis_engine 相同 backend 根目錄）。"""
+    bd = str(_igtgs_backend_dir())
+    if bd not in sys.path:
+        sys.path.insert(0, bd)
 
 
 def parse_root_quality(chord_name: str) -> tuple[str | None, str | None]:
@@ -49,33 +56,34 @@ def beats_to_chord_segments(
     per_beat_chords: list[str],
     duration: float,
 ) -> list[dict[str, Any]]:
-    """將每拍一個和絃合併為連續時間段（與 chord_service 條目格式一致）。"""
+    """
+    每拍一個時間段、不合併連續相同和絃。
+    若合併成長段，synchronize_chords 只會在「段起點」對齊最近拍，易與逐拍 refine 結果錯位；
+    逐拍輸出可保證與 grid 上 beatIndex 一致。
+    """
     if not beat_times or len(per_beat_chords) != len(beat_times):
         return []
     segments: list[dict[str, Any]] = []
     for i, chord in enumerate(per_beat_chords):
         start = float(beat_times[i])
         end = float(beat_times[i + 1]) if i + 1 < len(beat_times) else float(duration)
-        if segments and segments[-1]["chord"] == chord:
-            segments[-1]["end"] = end
-        else:
-            segments.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "chord": chord,
-                    "confidence": 1.0,
-                }
-            )
+        segments.append(
+            {
+                "start": start,
+                "end": end,
+                "chord": chord,
+                "confidence": 1.0,
+            }
+        )
     return segments
 
 
 @lru_cache(maxsize=1)
 def _load_refiner_model_at_path(weights_str: str) -> tuple[Any, torch.device]:
     """僅在權重檔存在時呼叫，避免快取「無檔案」狀態。"""
-    _prepare_refiner_imports()
-    import config as refiner_config  # type: ignore
-    from model import ChordRefinerCNN  # type: ignore
+    _ensure_igtgs_backend_on_path()
+    from models.ChordRefiner import config as refiner_config  # type: ignore
+    from models.ChordRefiner.model import ChordRefinerCNN  # type: ignore
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = ChordRefinerCNN(num_classes=len(refiner_config.CHORD_LIST)).to(device)
@@ -127,8 +135,8 @@ def refine_beat_segment(
         )
         if y.size == 0:
             return None
-        _prepare_refiner_imports()
-        from predict import predict_single_window  # type: ignore
+        _ensure_igtgs_backend_on_path()
+        from models.ChordRefiner.predict import predict_single_window  # type: ignore
 
         return predict_single_window(np.asarray(y, dtype=np.float32), int(sr), model, device)
     except Exception as exc:  # noqa: BLE001
@@ -300,12 +308,9 @@ def align_chord_refine_report(analysis_payload: dict[str, Any], refine_report: d
         return
 
     grid = analysis_payload.get("chordGridData") or {}
-    mapping = grid.get("originalAudioMapping") or []
-    audio_to_visual: dict[int, int] = {}
-    for m in mapping:
-        if m.get("audioIndex") is None:
-            continue
-        audio_to_visual[int(m["audioIndex"])] = int(m["visualIndex"])
+    # 譜面格子 index = shift 占位 + padding + 對應真實拍索引（與 get_chord_grid_data 一致）
+    shift = int(grid.get("shiftCount") or 0)
+    pad = int(grid.get("paddingCount") or 0)
 
     raw = analysis_payload.get("raw") or {}
     chord_block = raw.get("chordData") or {}
@@ -316,8 +321,8 @@ def align_chord_refine_report(analysis_payload: dict[str, Any], refine_report: d
 
     for b in beat_entries:
         bi = b.get("beatIndex")
-        if bi is not None and int(bi) in audio_to_visual:
-            b["gridVisualIndex"] = audio_to_visual[int(bi)]
+        if bi is not None:
+            b["gridVisualIndex"] = int(bi) + shift + pad
         else:
             b["gridVisualIndex"] = None
 

@@ -317,14 +317,17 @@ def build_frontend_analysis(
     chord_detector: str,
     beat_data: dict[str, Any],
     chord_data: dict[str, Any],
+    *,
+    skip_meter_selection: bool = False,
 ) -> dict[str, Any]:
     # 依 ChordMiniApp 機制：用和弦變換與下拍對齊分數，自動選擇 3/4 或 4/4
-    chosen = choose_meter_and_downbeats(beat_data, chord_data)
-    if chosen:
-        beat_data = dict(beat_data)
-        beat_data["downbeats"] = chosen["downbeats"]
-        beat_data["time_signature"] = chosen["time_signature"]
-        _log.info("Auto-selected meter (chord-downbeat alignment): → %s", chosen["time_signature"])
+    if not skip_meter_selection:
+        chosen = choose_meter_and_downbeats(beat_data, chord_data)
+        if chosen:
+            beat_data = dict(beat_data)
+            beat_data["downbeats"] = chosen["downbeats"]
+            beat_data["time_signature"] = chosen["time_signature"]
+            _log.info("Auto-selected meter (chord-downbeat alignment): → %s", chosen["time_signature"])
 
     beats = to_beat_info(beat_data)
     synchronized_chords = synchronize_chords(chord_data.get("chords") or [], beats)
