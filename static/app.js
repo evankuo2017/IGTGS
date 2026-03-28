@@ -11,6 +11,8 @@ const state = {
   currentVisualIndex: -1,
   chordPositions: {},
   capo: 0, // Capo 0-5，預設 0 表示無移調
+  /** 是否在和弦譜上以紅框標示有 refine 的格子（與分頁列 Refine result 連動） */
+  refineHighlightActive: false,
   /** 點擊譜面後下一次 draw：藍線精確落在點擊的 x／列（避免 time 反算與格子對齊誤差） */
   playheadClickSnap: null,
   /** 播放中用 requestAnimationFrame 持續更新 playhead（比 timeupdate 流暢） */
@@ -62,6 +64,7 @@ const dom = {
   nextChordText: document.querySelector("#next-chord-text"),
   guitarChords: document.querySelector("#guitar-chords"),
   capoSelector: document.querySelector("#capo-selector"),
+  refineResultToggle: document.querySelector("#refine-result-toggle"),
   rawOutput: document.querySelector("#raw-output"),
   tabs: document.querySelectorAll(".tab-button"),
   panels: document.querySelectorAll(".tab-panel"),
@@ -1267,6 +1270,25 @@ function setupAudioPlayer(analysis) {
   }
 }
 
+function getRefinedGridVisualIndexSet(analysis) {
+  const ref = analysis && analysis.raw && analysis.raw.chordRefine;
+  const ids = ref && Array.isArray(ref.refinedGridVisualIndices) ? ref.refinedGridVisualIndices : [];
+  return new Set(ids.map((n) => Number(n)));
+}
+
+function syncRefineHighlightToggleUi(analysis) {
+  const btn = dom.refineResultToggle;
+  if (!btn) return;
+  const refinedSet = getRefinedGridVisualIndexSet(analysis);
+  const hasRefined = refinedSet.size > 0;
+  btn.disabled = !hasRefined;
+  if (!hasRefined) {
+    state.refineHighlightActive = false;
+    btn.setAttribute("aria-pressed", "false");
+    btn.classList.remove("active");
+  }
+}
+
 function renderChordGrid(analysis) {
   const measures = analysis.measures || [];
   const timeSignature = analysis.summary.timeSignature || 4;
@@ -1276,6 +1298,8 @@ function renderChordGrid(analysis) {
     dom.chordGrid.innerHTML = '<p class="diagram-note">目前沒有可顯示的小節資料。</p>';
     return;
   }
+
+  const refinedVisual = getRefinedGridVisualIndexSet(analysis);
 
   let maxCellIndex = -1;
   measures.forEach((measure) => {
@@ -1289,6 +1313,8 @@ function renderChordGrid(analysis) {
       .map((cell, cellIndex) => {
         const isLastCellInGridRow = cell.index % colsPerRow === colsPerRow - 1;
         const isRowWrapToNextLine = isLastCellInGridRow && cell.index < maxCellIndex;
+        const refineHighlight =
+          state.refineHighlightActive && refinedVisual.has(cell.index) ? "refine-highlight" : "";
         const classes = [
           "measure-cell",
           cell.isShift ? "shift" : "",
@@ -1296,6 +1322,7 @@ function renderChordGrid(analysis) {
           cellIndex === 0 ? "measure-start" : "",
           isRowWrapToNextLine ? "chord-grid-row-wrap-bar" : "",
           Math.floor(cell.index / colsPerRow) >= 1 ? "chord-grid-row-hline" : "",
+          refineHighlight,
         ]
           .filter(Boolean)
           .join(" ");
@@ -1688,7 +1715,13 @@ async function renderAnalysis(analysis) {
   state.currentVisualIndex = -1;
   state.activeProgressionIndex = 0;
   state.capo = 0;
+  state.refineHighlightActive = false;
   if (dom.capoSelector) dom.capoSelector.value = "0";
+  if (dom.refineResultToggle) {
+    dom.refineResultToggle.setAttribute("aria-pressed", "false");
+    dom.refineResultToggle.classList.remove("active");
+  }
+  syncRefineHighlightToggleUi(analysis);
   dom.resultTitle.textContent = analysis.title;
   dom.resultSubtitle.textContent = `共偵測 ${analysis.summary.totalChords} 個和弦事件，分為整首歌和弦譜、全部和弦指法圖與 Raw Data 三個頁面。`;
   renderSummaryChips(analysis);
@@ -1757,6 +1790,21 @@ function setupCapoSelector() {
   });
 }
 
+function setupRefineHighlightToggle() {
+  const btn = dom.refineResultToggle;
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    if (btn.disabled) return;
+    state.refineHighlightActive = !state.refineHighlightActive;
+    btn.setAttribute("aria-pressed", state.refineHighlightActive ? "true" : "false");
+    btn.classList.toggle("active", state.refineHighlightActive);
+    if (state.analysis) {
+      renderChordGrid(state.analysis);
+      syncPlaybackState(state.analysis);
+    }
+  });
+}
+
 function setupTabs() {
   dom.tabs.forEach((button) => {
     button.addEventListener("click", () => {
@@ -1786,6 +1834,7 @@ setupTabs();
 setupFileInput();
 setupChordGridSeek();
 setupCapoSelector();
+setupRefineHighlightToggle();
 updateSelectedSource();
 pinChordSidebar();
 loadEngineStatus();

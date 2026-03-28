@@ -376,10 +376,46 @@ select {
 
 .tabs {
   display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 6px;
   border-radius: 999px;
   background: rgba(226, 232, 240, 0.65);
+}
+
+/* 分頁列右側：切換和弦譜上 Refine 紅框（非分頁切換，不含 .tab-button） */
+.refine-result-tab-button {
+  margin-left: 2px;
+  padding: 0 16px;
+  min-height: 48px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease,
+    color 0.18s ease;
+}
+
+.refine-result-tab-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  color: var(--text);
+}
+
+.refine-result-tab-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.refine-result-tab-button.active {
+  background: white;
+  color: var(--text);
+  border-color: rgba(220, 38, 38, 0.4);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
 .tab-button {
@@ -441,6 +477,7 @@ select {
 .capo-control {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   flex-shrink: 0;
 }
@@ -746,6 +783,14 @@ select {
   background: transparent;
 }
 
+/* 按下 Refine result 後：標示有經 refiner 更新的格子（紅色內框，不蓋住小節線） */
+.measure-cell.refine-highlight {
+  background: transparent !important;
+  box-shadow: inset 0 0 0 2px #dc2626;
+  position: relative;
+  z-index: 1;
+}
+
 .chord-tag {
   min-height: 1.4em;
   font-size: 0.95rem;
@@ -967,6 +1012,16 @@ select {
 
   .tab-button {
     color: var(--muted-dark);
+  }
+
+  .refine-result-tab-button {
+    color: var(--muted-dark);
+  }
+
+  .refine-result-tab-button.active {
+    background: rgba(30, 41, 59, 0.95);
+    border-color: rgba(248, 113, 113, 0.45);
+    color: var(--text-dark);
   }
 
   .continuous-chord-grid {
