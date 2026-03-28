@@ -81,6 +81,6 @@ python app.py
 
 ![IGTGS 網頁介面：輸入來源與分析](docs/igtgs-web-ui.png)
 
-Once analysis of your audio file is complete, you get a dynamic guitar chord sheet synchronized with playback, including current- and next-chord diagrams.
+音檔分析完成後，會得到與播放進度同步的動態吉他和弦譜，並可同時查看當前和弦與下一個和弦的指法圖。
 
 ![IGTGS：分析結果與即時和弦譜](docs/igtgs-chord-sheet-analysis.png)
