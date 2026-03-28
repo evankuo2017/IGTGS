@@ -76,3 +76,11 @@ python app.py
 預設啟動位置：
 
 - 網址：[http://127.0.0.1:5055](http://127.0.0.1:5055)
+
+## 介面預覽
+
+![IGTGS 網頁介面：輸入來源與分析](docs/igtgs-web-ui.png)
+
+Once analysis of your audio file is complete, you get a dynamic guitar chord sheet synchronized with playback, including current- and next-chord diagrams.
+
+![IGTGS：分析結果與即時和弦譜](docs/igtgs-chord-sheet-analysis.png)
