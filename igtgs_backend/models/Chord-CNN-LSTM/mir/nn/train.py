@@ -11,14 +11,14 @@ class NetworkBehavior(nn.Module):
 
     def __init__(self):
         super().__init__()
-        # ENHANCED GPU ACCELERATION: Use device management similar to Beat-Transformer
+        # 依執行環境選擇 device（本機優先 CUDA/MPS，雲端／託管環境用 CPU）
         self.device = self._get_optimal_device()
         self.use_gpu = self.device.type in ['cuda', 'mps']
         self.use_data_parallel = False
         print(f"🎵 Chord-CNN-LSTM using device: {self.device}")
 
     def _get_optimal_device(self):
-        """Get the optimal device using the same hierarchy as Beat-Transformer"""
+        """依環境選擇 torch device（本機 GPU 優先，否則 CPU）。"""
         import torch
         import os
 

@@ -1,1 +1,1 @@
-# models package：Chord-CNN-LSTM、ChordRefiner 等推理資產目錄
+# models package：Chord-CNN-LSTM、ChordRefiner 推理資產目錄

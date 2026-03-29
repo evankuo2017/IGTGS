@@ -15,7 +15,7 @@ SUPPORTED_CHORD_DICT = "submission"
 
 
 class ChordCNNLSTMDetector:
-    """Chord-CNN-LSTM 和弦辨識本體，從原本 detectors 模組內搬到同一支腳本。"""
+    """Chord-CNN-LSTM 和弦辨識本體（單一路徑後端）。"""
 
     def __init__(self, model_dir: str | None = None) -> None:
         self.model_dir = Path(model_dir) if model_dir else None
@@ -182,17 +182,14 @@ class ChordRecognitionService:
         detector: str = "chord-cnn-lstm",
         chord_dict: str | None = None,
         force: bool = False,
-        use_spleeter: bool = False,
     ) -> dict[str, Any]:
         try:
-            if detector not in {self.detector_name, "auto"}:
+            if detector != self.detector_name:
                 raise ValueError(f"Unsupported chord detector: {detector}")
             if chord_dict is None:
                 chord_dict = SUPPORTED_CHORD_DICT
             if chord_dict != SUPPORTED_CHORD_DICT:
                 raise ValueError(f"Unsupported chord dictionary: {chord_dict}")
-            if use_spleeter:
-                raise ValueError("Spleeter is no longer part of the simplified backend")
             if not os.path.exists(file_path):
                 return {"success": False, "error": f"Audio file not found: {file_path}"}
             if not validate_audio_file(file_path):

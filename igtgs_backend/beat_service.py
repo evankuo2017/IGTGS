@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from collections import Counter
 from typing import Any
 
 import numpy as np
@@ -11,7 +10,7 @@ from utils.logging import log_debug, log_error, log_info
 
 
 class MadmomDetector:
-    """Madmom 節拍偵測本體，從原本 detectors 模組內搬到同一支腳本。"""
+    """Madmom 節拍偵測本體（單一路徑後端）。"""
 
     def __init__(self) -> None:
         self._available: bool | None = None
@@ -121,7 +120,7 @@ class BeatDetectionService:
     def detect_beats(self, file_path: str, detector: str = "madmom", force: bool = False) -> dict[str, Any]:
         start_message = f"Processing audio file: {file_path}"
         try:
-            if detector not in {self.detector_name, "auto"}:
+            if detector != self.detector_name:
                 raise ValueError(f"Unsupported beat detector: {detector}")
             if not os.path.exists(file_path):
                 return {"success": False, "error": f"Audio file not found: {file_path}"}
@@ -156,61 +155,12 @@ class BeatDetectionService:
             log_error(error_msg)
             return {"success": False, "error": error_msg}
 
-    def _log_measure_statistics(self, file_path: str, result: dict[str, Any]) -> None:
+    def _log_measure_statistics(self, file_path: str, _result: dict[str, Any]) -> None:
         try:
             file_id = os.path.basename(file_path)
-            time_sig = result.get("time_signature", "4/4")
-            beats_per_measure = None
-            if isinstance(time_sig, str) and "/" in time_sig:
-                beats_per_measure = int(str(time_sig).split("/")[0])
-            elif isinstance(time_sig, (int, float)):
-                beats_per_measure = int(time_sig)
-
-            beats = result.get("beats") or []
-            downbeats = result.get("downbeats") or []
-            measure_counts: list[int] = []
-            is_madmom_heuristic = (
-                str(result.get("model_used")) == "madmom"
-                and isinstance(result.get("downbeat_candidates_meta"), dict)
-                and result.get("downbeat_candidates_meta", {}).get("strategy") == "heuristic_slices_from_beats"
+            # madmom：downbeat 由節拍序列啟發式切片，無其他節拍後端分支
+            log_debug(
+                f"[Beat-Per-Measure] file={file_id} skipped_for=madmom_heuristic_slices distribution=derived"
             )
-
-            if not is_madmom_heuristic and isinstance(beats, list) and isinstance(downbeats, list) and len(downbeats) >= 2:
-                beat_index = 0
-                total_beats = len(beats)
-                for idx in range(len(downbeats) - 1):
-                    start = float(downbeats[idx])
-                    end = float(downbeats[idx + 1])
-                    while beat_index < total_beats and float(beats[beat_index]) < start:
-                        beat_index += 1
-                    count = 0
-                    while beat_index < total_beats and float(beats[beat_index]) < end:
-                        count += 1
-                        beat_index += 1
-                    if 2 <= count <= 12:
-                        measure_counts.append(int(count))
-
-            distribution = Counter(measure_counts) if measure_counts else {}
-            confidence = None
-            if distribution:
-                dominant_beats = max(distribution.items(), key=lambda kv: kv[1])[0]
-                confidence = distribution[dominant_beats] / max(1, len(measure_counts))
-
-            if is_madmom_heuristic:
-                log_debug(
-                    f"[Beat-Per-Measure] file={file_id} skipped_for=madmom_heuristic_slices distribution=derived"
-                )
-            elif confidence is not None:
-                log_info(
-                    f"[Beat-Per-Measure] file={file_id} time_signature={time_sig} "
-                    f"beats_per_measure={beats_per_measure} measures={len(measure_counts)} "
-                    f"distribution={dict(distribution)} confidence={confidence:.2f}"
-                )
-            else:
-                log_info(
-                    f"[Beat-Per-Measure] file={file_id} time_signature={time_sig} "
-                    f"beats_per_measure={beats_per_measure} measures={len(measure_counts)} "
-                    f"distribution={dict(distribution)}"
-                )
         except Exception as exc:  # noqa: BLE001
             log_debug(f"Beat-per-measure logging skipped due to error: {exc}")

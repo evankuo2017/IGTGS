@@ -81,7 +81,6 @@ def analyze_audio_file(
         detector=chord_detector,
         chord_dict=chord_dict,
         force=False,
-        use_spleeter=False,
     )
     if not chord_data.get("success"):
         raise RuntimeError(chord_data.get("error") or "Chord recognition failed")
