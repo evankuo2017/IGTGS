@@ -67,7 +67,6 @@ const dom = {
   chordGrid: document.querySelector("#chord-grid"),
   currentChordDiagram: document.querySelector("#current-chord-diagram"),
   nextChordDiagram: document.querySelector("#next-chord-diagram"),
-  nextChordText: document.querySelector("#next-chord-text"),
   guitarChords: document.querySelector("#guitar-chords"),
   capoSelector: document.querySelector("#capo-selector"),
   refineResultToggle: document.querySelector("#refine-result-toggle"),
@@ -1264,18 +1263,6 @@ function syncPlaybackState(analysis) {
       ? `目前和弦：${stripHtml(formatChordDisplay(displayChord, state.accidentalPreference))}`
       : "目前尚未進入和弦區段";
     dom.playbackStatus.textContent = `${currentLabel} · ${chordLabel}`;
-  }
-
-  if (dom.nextChordText) {
-    const nextChord = getNextChordName(analysis);
-    if (!nextChord) {
-      dom.nextChordText.innerHTML = "--";
-    } else {
-      const nextDisplayChord = state.capo
-        ? transposeChord(nextChord, state.capo, state.accidentalPreference)
-        : nextChord;
-      dom.nextChordText.innerHTML = formatChordDisplay(nextDisplayChord, state.accidentalPreference);
-    }
   }
 }
 
