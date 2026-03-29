@@ -27,6 +27,9 @@ const FIXED_CHORD_DETECTOR = "chord-cnn-lstm";
 const LOCAL_CHORD_DB_URL = "/static/vendor/chords/guitar.json";
 const LOCAL_CHORD_IMAGE_BASE = "/static/chord-diagrams";
 
+/** localStorage：即時指形圖是否收合（跨重新整理保留） */
+const LS_CHORD_SIDEBAR_COLLAPSED = "igtgsChordSidebarCollapsed";
+
 /** 和弦譜橫向一列放幾個小節（與 renderChordGrid 一致） */
 const CHORD_GRID_MEASURES_PER_ROW = 4;
 
@@ -54,6 +57,7 @@ const dom = {
   statusMessage: document.querySelector("#status-message"),
   resultsPanel: document.querySelector("#results-panel"),
   chordSidebar: document.querySelector("#chord-sidebar"),
+  chordSidebarToggle: document.querySelector("#chord-sidebar-toggle"),
   resultTitle: document.querySelector("#result-title"),
   resultSubtitle: document.querySelector("#result-subtitle"),
   summaryChips: document.querySelector("#summary-chips"),
@@ -628,6 +632,54 @@ function pinChordSidebar() {
   el.style.top = "auto";
   el.style.transform = "translateX(-50%)";
   el.style.zIndex = "20";
+}
+
+function readChordSidebarCollapsedPreference() {
+  try {
+    return window.localStorage.getItem(LS_CHORD_SIDEBAR_COLLAPSED) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeChordSidebarCollapsedPreference(collapsed) {
+  try {
+    window.localStorage.setItem(LS_CHORD_SIDEBAR_COLLAPSED, collapsed ? "1" : "0");
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+/**
+ * 套用即時指形圖收合／展開 UI（與 localStorage 同步）
+ * @param {boolean} collapsed 是否收合為僅標題列
+ */
+function applyChordSidebarCollapsed(collapsed) {
+  const panel = dom.chordSidebar;
+  const btn = dom.chordSidebarToggle;
+  if (!panel || !btn) return;
+
+  panel.classList.toggle("chord-sidebar-collapsed", collapsed);
+  btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  btn.title = collapsed ? "展開即時指形圖" : "收合即時指形圖";
+  const label = btn.querySelector(".chord-sidebar-toggle-label");
+  if (label) {
+    label.textContent = collapsed ? "展開" : "收合";
+  }
+  writeChordSidebarCollapsedPreference(collapsed);
+}
+
+function setupChordSidebarCollapse() {
+  const panel = dom.chordSidebar;
+  const btn = dom.chordSidebarToggle;
+  if (!panel || !btn) return;
+
+  applyChordSidebarCollapsed(readChordSidebarCollapsedPreference());
+
+  btn.addEventListener("click", () => {
+    const nowCollapsed = panel.classList.contains("chord-sidebar-collapsed");
+    applyChordSidebarCollapsed(!nowCollapsed);
+  });
 }
 
 function updateSelectedSource() {
@@ -1939,6 +1991,7 @@ setupFileInput();
 setupChordGridSeek();
 setupCapoSelector();
 setupRefineHighlightToggle();
+setupChordSidebarCollapse();
 updateSelectedSource();
 pinChordSidebar();
 loadEngineStatus();

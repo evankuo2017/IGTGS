@@ -2,6 +2,7 @@
 <html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
+    <meta name="color-scheme" content="light" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>IGTGS自動吉他譜生成系統</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
@@ -167,10 +168,22 @@
     -->
     <aside id="chord-sidebar" class="hidden results-sidebar chord-sidebar-panel chord-floating-panel" aria-label="即時指形圖">
       <div class="chord-sidebar-panel-header">
-        <h3>即時指形圖</h3>
-        <p>依播放進度顯示當前與下一個和弦</p>
+        <div class="chord-sidebar-header-main">
+          <h3>即時指形圖</h3>
+          <p class="chord-sidebar-header-desc">依播放進度顯示當前與下一個和弦</p>
+        </div>
+        <button
+          type="button"
+          id="chord-sidebar-toggle"
+          class="chord-sidebar-collapse-btn"
+          aria-expanded="true"
+          aria-controls="chord-sidebar-body"
+          title="收合即時指形圖"
+        >
+          <span class="chord-sidebar-toggle-label">收合</span>
+        </button>
       </div>
-      <div class="chord-sidebar-panel-body">
+      <div id="chord-sidebar-body" class="chord-sidebar-panel-body">
         <div class="chord-sidebar-card">
           <h4 class="chord-sidebar-label">當前和弦</h4>
           <div id="current-chord-diagram" class="chord-sidebar-diagram"></div>
