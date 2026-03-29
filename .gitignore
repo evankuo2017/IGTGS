@@ -20,6 +20,9 @@ runtime/
 # Model cache
 .cache/
 models/
+# 保留後端 Python models 套件目錄（與上方 models/ 衝突時以否定規則還原）
+!igtgs_backend/models/
+!igtgs_backend/models/**
 
 # Upload folder
 /tmp/beatthis_uploads/
