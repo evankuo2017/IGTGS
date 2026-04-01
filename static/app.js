@@ -19,10 +19,14 @@ const state = {
   playheadRafId: null,
   /** setupAudioPlayer 以 blob: 載入時需 revoke，避免洩漏與重複指派失敗 */
   playbackObjectUrl: null,
+  /** 上次已對齊捲動的 playhead 列號（播放中換列時觸發置中捲動） */
+  playheadScrollLastRow: null,
+  /** 按下播放後第一次更新 playhead 時強制置中（與換列分開） */
+  forceCenterChordPlayhead: false,
 };
 
 const FIXED_BEAT_DETECTOR = "madmom";
-const FIXED_CHORD_DETECTOR = "chord-cnn-lstm";
+const FIXED_CHORD_DETECTOR = "LVCR";
 
 const LOCAL_CHORD_DB_URL = "/static/vendor/chords/guitar.json";
 const LOCAL_CHORD_IMAGE_BASE = "/static/chord-diagrams";
@@ -1131,6 +1135,53 @@ function computeChordPlayheadRowVerticalLayout(track, analysis, currentTime) {
   return getRowPixelBoundsRelativeToTrack(track, analysis, row);
 }
 
+/** 目前時間對應和弦格列索引（0-based，與 playhead 垂直區間一致） */
+function getChordPlayheadRowIndex(analysis, currentTime) {
+  const colsPerRow = getChordGridColsPerRow(analysis);
+  let vi = getCurrentVisualIndexForTime(analysis, currentTime || 0);
+  if (vi < 0) vi = 0;
+  return Math.floor(vi / colsPerRow);
+}
+
+/**
+ * 橫向捲動 .chord-grid-track，使 playhead（內容座標 x）落在軌道可視區水平正中央。
+ */
+function scrollChordTrackToCenterPlayhead(track, playheadXContentPx) {
+  if (!track || playheadXContentPx == null || Number.isNaN(playheadXContentPx)) return;
+  const cw = track.clientWidth;
+  const maxScroll = Math.max(0, track.scrollWidth - cw);
+  if (maxScroll <= 0) return;
+  const sl = Math.max(0, Math.min(maxScroll, playheadXContentPx - cw / 2));
+  track.scrollLeft = sl;
+}
+
+/**
+ * 藍線置於軌道水平中央後，再捲動視窗使藍線落在 viewport 垂直（與水平）正中央。
+ */
+function centerChordPlayheadInViewport(track, playhead, playheadXContentPx, behavior = "smooth") {
+  if (!track || !playhead || playheadXContentPx == null || Number.isNaN(playheadXContentPx)) return;
+  scrollChordTrackToCenterPlayhead(track, playheadXContentPx);
+
+  const applyPageScroll = () => {
+    const rect = playhead.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const dx = cx - vw / 2;
+    const dy = cy - vh / 2;
+    const maxX = Math.max(0, document.documentElement.scrollWidth - vw);
+    const maxY = Math.max(0, document.documentElement.scrollHeight - vh);
+    const left = Math.max(0, Math.min(maxX, window.scrollX + dx));
+    const top = Math.max(0, Math.min(maxY, window.scrollY + dy));
+    window.scrollTo({ left, top, behavior });
+  };
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(applyPageScroll);
+  });
+}
+
 /**
  * 更新和弦譜上的垂直 playhead（播放位置線），不重新渲染整個 grid。
  */
@@ -1170,10 +1221,12 @@ function updateChordPlayhead(analysis) {
 
   if (!dom.analysisAudio || !analysis.playbackUrl) {
     playhead.style.display = "none";
+    state.playheadScrollLastRow = null;
     return;
   }
 
   const t = dom.analysisAudio.currentTime || 0;
+  const playing = !dom.analysisAudio.paused;
 
   if (state.playheadClickSnap) {
     const snap = state.playheadClickSnap;
@@ -1185,6 +1238,8 @@ function updateChordPlayhead(analysis) {
       playhead.style.top = `${rowLayout.top}px`;
       playhead.style.height = `${rowLayout.height}px`;
       playhead.style.bottom = "auto";
+      state.playheadScrollLastRow = snap.row;
+      centerChordPlayheadInViewport(track, playhead, snap.x, "smooth");
       return;
     }
   }
@@ -1193,6 +1248,7 @@ function updateChordPlayhead(analysis) {
   const rowLayout = computeChordPlayheadRowVerticalLayout(track, analysis, t);
   if (x === null || rowLayout === null) {
     playhead.style.display = "none";
+    state.playheadScrollLastRow = null;
     return;
   }
 
@@ -1201,6 +1257,23 @@ function updateChordPlayhead(analysis) {
   playhead.style.top = `${rowLayout.top}px`;
   playhead.style.height = `${rowLayout.height}px`;
   playhead.style.bottom = "auto";
+
+  const rowNow = getChordPlayheadRowIndex(analysis, t);
+  const rowChanged = state.playheadScrollLastRow !== rowNow;
+
+  // 播放開始：強制置中；播放中換列：軌道與頁面捲到藍線在視窗正中央
+  if (state.forceCenterChordPlayhead) {
+    state.forceCenterChordPlayhead = false;
+    state.playheadScrollLastRow = rowNow;
+    centerChordPlayheadInViewport(track, playhead, x, "smooth");
+  } else if (playing && rowChanged) {
+    state.playheadScrollLastRow = rowNow;
+    centerChordPlayheadInViewport(track, playhead, x, "smooth");
+  } else {
+    if (rowChanged || state.playheadScrollLastRow === null) {
+      state.playheadScrollLastRow = rowNow;
+    }
+  }
 }
 
 function getCurrentChordName(analysis, visualIndex) {
@@ -1356,6 +1429,7 @@ async function setupAudioPlayer(analysis) {
     if (dom.playbackStatus) {
       dom.playbackStatus.textContent = "可開始播放並同步查看目前和弦位置";
     }
+    state.forceCenterChordPlayhead = true;
     syncPlaybackState(analysis);
     startChordPlayheadRaf();
   };
@@ -1423,6 +1497,7 @@ function syncRefineHighlightToggleUi(analysis) {
 }
 
 function renderChordGrid(analysis) {
+  state.playheadScrollLastRow = null;
   const measures = analysis.measures || [];
   const timeSignature = analysis.summary.timeSignature || 4;
   const measuresPerRow = CHORD_GRID_MEASURES_PER_ROW;

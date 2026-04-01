@@ -21,7 +21,7 @@ from grid_builder import build_frontend_analysis, choose_meter_and_downbeats
 BASE_DIR = Path(__file__).resolve().parent
 AUDIO_CACHE_DIR = BASE_DIR / "runtime" / "audio_cache"
 FIXED_BEAT_DETECTOR = "madmom"
-FIXED_CHORD_DETECTOR = "chord-cnn-lstm"
+FIXED_CHORD_DETECTOR = "LVCR"
 YOUTUBE_URL_RE = re.compile(
     r"^(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/)[A-Za-z0-9_-]+"
 )

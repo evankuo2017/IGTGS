@@ -23,7 +23,7 @@ MODEL_NAMES = [os.path.join(current_dir, 'cache_data', f'joint_chord_net_ismir_n
 
 def chord_recognition(audio_path, lab_path, chord_dict_name='submission'):
     """
-    Real implementation of chord recognition using the Chord-CNN-LSTM model.
+    Real implementation of chord recognition using the LVCR model.
 
     Args:
         audio_path: Path to the audio file

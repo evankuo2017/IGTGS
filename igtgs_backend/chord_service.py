@@ -14,8 +14,8 @@ from utils.logging import log_debug, log_error, log_info
 SUPPORTED_CHORD_DICT = "submission"
 
 
-class ChordCNNLSTMDetector:
-    """Chord-CNN-LSTM 和弦辨識本體（單一路徑後端）。"""
+class LVCRDetector:
+    """LVCR 和弦辨識本體（單一路徑後端）。"""
 
     def __init__(self, model_dir: str | None = None) -> None:
         self.model_dir = Path(model_dir) if model_dir else None
@@ -27,7 +27,7 @@ class ChordCNNLSTMDetector:
 
         try:
             if not self.model_dir or not self.model_dir.exists():
-                log_error("Chord-CNN-LSTM model directory not found")
+                log_error("LVCR model directory not found")
                 self._available = False
                 return False
 
@@ -43,17 +43,17 @@ class ChordCNNLSTMDetector:
                 from chord_recognition import chord_recognition  # noqa: F401
 
                 self._available = True
-                log_debug("Chord-CNN-LSTM availability: True")
+                log_debug("LVCR availability: True")
                 return True
             except ImportError as exc:
-                log_error(f"Chord-CNN-LSTM import failed: {exc}")
+                log_error(f"LVCR import failed: {exc}")
                 # 仍允許 fallback mock，方便在模型未就緒時測試前後端流程
                 self._available = True
                 return True
             finally:
                 os.chdir(original_dir)
         except Exception as exc:  # noqa: BLE001
-            log_error(f"Error checking Chord-CNN-LSTM availability: {exc}")
+            log_error(f"Error checking LVCR availability: {exc}")
             self._available = False
             return False
 
@@ -61,9 +61,9 @@ class ChordCNNLSTMDetector:
         if not self.is_available():
             return {
                 "success": False,
-                "error": "Chord-CNN-LSTM is not available",
-                "model_used": "chord-cnn-lstm",
-                "model_name": "Chord-CNN-LSTM",
+                "error": "LVCR is not available",
+                "model_used": "LVCR",
+                "model_name": "LVCR",
             }
 
         original_dir = os.getcwd()
@@ -71,7 +71,7 @@ class ChordCNNLSTMDetector:
         start_time = time.time()
 
         try:
-            log_info(f"Running Chord-CNN-LSTM recognition on: {file_path} with chord_dict={chord_dict}")
+            log_info(f"Running LVCR recognition on: {file_path} with chord_dict={chord_dict}")
 
             temp_lab_file = tempfile.NamedTemporaryFile(delete=False, suffix=".lab")
             temp_lab_path = temp_lab_file.name
@@ -88,8 +88,8 @@ class ChordCNNLSTMDetector:
                     return {
                         "success": False,
                         "error": "Chord recognition failed. See server logs for details.",
-                        "model_used": "chord-cnn-lstm",
-                        "model_name": "Chord-CNN-LSTM",
+                        "model_used": "LVCR",
+                        "model_name": "LVCR",
                         "chord_dict": chord_dict,
                         "processing_time": time.time() - start_time,
                     }
@@ -107,26 +107,26 @@ class ChordCNNLSTMDetector:
             duration = chord_data[-1]["end"] if chord_data else 0.0
             processing_time = time.time() - start_time
 
-            log_info(f"Chord-CNN-LSTM recognition successful: {len(chord_data)} chords detected")
+            log_info(f"LVCR recognition successful: {len(chord_data)} chords detected")
 
             return {
                 "success": True,
                 "chords": chord_data,
                 "total_chords": len(chord_data),
                 "duration": duration,
-                "model_used": "chord-cnn-lstm",
-                "model_name": "Chord-CNN-LSTM",
+                "model_used": "LVCR",
+                "model_name": "LVCR",
                 "chord_dict": chord_dict,
                 "processing_time": processing_time,
             }
         except Exception as exc:  # noqa: BLE001
-            error_msg = f"Chord-CNN-LSTM recognition error: {exc}"
+            error_msg = f"LVCR recognition error: {exc}"
             log_error(error_msg)
             return {
                 "success": False,
                 "error": error_msg,
-                "model_used": "chord-cnn-lstm",
-                "model_name": "Chord-CNN-LSTM",
+                "model_used": "LVCR",
+                "model_name": "LVCR",
                 "chord_dict": chord_dict,
                 "processing_time": time.time() - start_time,
             }
@@ -166,11 +166,10 @@ class ChordCNNLSTMDetector:
 
 class ChordRecognitionService:
     def __init__(self) -> None:
-        self.detector_name = "chord-cnn-lstm"
-        # 直接在同一支腳本內決定模型路徑，避免額外 backend_paths 分層
+        self.detector_name = "LVCR"
         backend_dir = Path(__file__).resolve().parent
-        model_dir = backend_dir / "models" / "Chord-CNN-LSTM"
-        self.detector = ChordCNNLSTMDetector(str(model_dir))
+        model_dir = backend_dir / "models" / "LVCR"
+        self.detector = LVCRDetector(str(model_dir))
         self.size_limit_mb = 100
 
     def get_available_detectors(self) -> list[str]:
@@ -179,7 +178,7 @@ class ChordRecognitionService:
     def recognize_chords(
         self,
         file_path: str,
-        detector: str = "chord-cnn-lstm",
+        detector: str = "LVCR",
         chord_dict: str | None = None,
         force: bool = False,
     ) -> dict[str, Any]:

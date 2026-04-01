@@ -25,7 +25,7 @@ def _igtgs_backend_dir() -> Path:
     return Path(os.environ.get("IGTGS_BACKEND_DIR", str(BASE_DIR / "igtgs_backend"))).resolve()
 
 
-# ChordRefiner 與 Chord-CNN-LSTM 並列於 igtgs_backend/models/
+# ChordRefiner 與 LVCR 並列於 igtgs_backend/models/
 REFINER_DIR = _igtgs_backend_dir() / "models" / "ChordRefiner"
 DEFAULT_REFINER_WEIGHTS = REFINER_DIR / "best_chord_model.pth"
 

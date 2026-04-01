@@ -12,7 +12,7 @@ IGTGS_BACKEND_DIR = Path(
     os.environ.get("IGTGS_BACKEND_DIR", str(BASE_DIR / "igtgs_backend"))
 ).resolve()
 FIXED_BEAT_DETECTOR = "madmom"
-FIXED_CHORD_DETECTOR = "chord-cnn-lstm"
+FIXED_CHORD_DETECTOR = "LVCR"
 
 
 def _prepare_backend_imports() -> None:

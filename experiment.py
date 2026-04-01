@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-實驗腳本：對單一音檔跑 IGTGS 內建和弦辨識（Chord-CNN-LSTM + madmom 節拍），
+實驗腳本：對單一音檔跑 IGTGS 內建和弦辨識（LVCR + madmom 節拍），
 再依「時間軸上每一個和弦 segment」檢查 quality 是否為 maj / maj7 / min / min7；
 若是則截取該段音訊送 ChordRefiner，若 softmax 最大值（信心）>= 0.5 則以 argmax 類別更新 quality（根音不變）。
 
@@ -60,7 +60,7 @@ def run_segment_wise_refine(
             "start": start,
             "end": end,
             "originalChord": orig,
-            "cnnLstmConfidence": conf,
+            "lvcrConfidence": conf,
         }
 
         root, quality = parse_root_quality(orig)
@@ -144,7 +144,7 @@ def main() -> int:
     beat_data, chord_data = analyze_audio_file(
         str(audio_path),
         beat_detector="madmom",
-        chord_detector="chord-cnn-lstm",
+        chord_detector="LVCR",
         chord_dict="submission",
     )
 
@@ -162,7 +162,7 @@ def main() -> int:
         "audioPath": str(audio_path),
         "duration": duration,
         "beatModel": beat_data.get("model_used") or "madmom",
-        "chordModel": chord_data.get("model_used") or "chord-cnn-lstm",
+        "chordModel": chord_data.get("model_used") or "LVCR",
         "refinerWeightsPath": weights_path,
         "confidenceThreshold": REFINER_CONFIDENCE_MIN,
         "targetQualities": sorted(REFINE_QUALITIES),

@@ -15,7 +15,7 @@ class NetworkBehavior(nn.Module):
         self.device = self._get_optimal_device()
         self.use_gpu = self.device.type in ['cuda', 'mps']
         self.use_data_parallel = False
-        print(f"🎵 Chord-CNN-LSTM using device: {self.device}")
+        print(f"🎵 LVCR using device: {self.device}")
 
     def _get_optimal_device(self):
         """依環境選擇 torch device（本機 GPU 優先，否則 CPU）。"""
@@ -30,17 +30,17 @@ class NetworkBehavior(nn.Module):
         if is_local:
             # Local development: prefer GPU acceleration
             if torch.cuda.is_available():
-                print("🚀 CUDA GPU available for Chord-CNN-LSTM")
+                print("🚀 CUDA GPU available for LVCR")
                 return torch.device('cuda')
             elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                print("🍎 MPS GPU available for Chord-CNN-LSTM")
+                print("🍎 MPS GPU available for LVCR")
                 return torch.device('mps')
             else:
-                print("💻 Using CPU for Chord-CNN-LSTM (local)")
+                print("💻 Using CPU for LVCR (local)")
                 return torch.device('cpu')
         else:
             # Production: use CPU for stability
-            print("☁️  Using CPU for Chord-CNN-LSTM (production)")
+            print("☁️  Using CPU for LVCR (production)")
             return torch.device('cpu')
 
     def get_optimizer(self):
@@ -52,7 +52,7 @@ class NetworkBehavior(nn.Module):
     def init_settings(self, is_training):
         # ENHANCED GPU ACCELERATION: Move model to optimal device
         self.to(self.device)
-        print(f"🔥 Chord-CNN-LSTM model moved to {self.device}")
+        print(f"🔥 LVCR model moved to {self.device}")
 
         if(is_training):
             self.train()
@@ -340,7 +340,7 @@ class NetworkInterface:
         # ENHANCED GPU ACCELERATION: Move inputs to optimal device
         if(self.net.use_gpu):
             inputs=[input.to(self.net.device) for input in inputs]
-            print(f"🔥 Chord-CNN-LSTM inference on {self.net.device}")
+            print(f"🔥 LVCR inference on {self.net.device}")
         with torch.no_grad():
             return self.net.inference(*inputs,**kwargs)
 
