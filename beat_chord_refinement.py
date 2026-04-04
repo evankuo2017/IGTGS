@@ -18,6 +18,85 @@ from grid_builder import synchronize_chords, to_beat_info
 
 _log = logging.getLogger(__name__)
 
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def default_use_no_vocals_for_refiner() -> bool:
+    """環境變數 IGTGS_REFINER_USE_NO_VOCALS=1 時預設對 refiner 使用伴奏軌。"""
+    return _env_truthy("IGTGS_REFINER_USE_NO_VOCALS")
+
+
+def default_demucs_model() -> str:
+    return (os.environ.get("IGTGS_DEMUCS_MODEL") or "htdemucs").strip() or "htdemucs"
+
+
+def default_demucs_device() -> str | None:
+    v = (os.environ.get("IGTGS_DEMUCS_DEVICE") or "").strip()
+    return v or None
+
+
+def any_beat_targets_refine(per_beat_chords: list[str]) -> bool:
+    """是否有任一拍落在需 ChordRefiner 二次判斷的 quality（maj/maj7/min/min7）。"""
+    for c in per_beat_chords:
+        root, quality = parse_root_quality(c)
+        if root is not None and quality is not None and quality in REFINE_QUALITIES:
+            return True
+    return False
+
+
+def prepare_refiner_audio_path(
+    audio_path: str,
+    *,
+    use_no_vocals: bool,
+    demucs_model: str | None = None,
+    demucs_device: str | None = None,
+    demucs_extra_args: list[str] | None = None,
+    out_subdir_name: str = "demucs_refiner_cache",
+) -> tuple[str, dict[str, Any]]:
+    """
+    use_no_vocals 為 True 時跑一次 Demucs（two-stems=vocals），回傳 no_vocals.wav 路徑；
+    否則回傳原音檔。失敗時降級為原音檔並寫入 meta['error']。
+    """
+    model = (demucs_model or default_demucs_model()).strip() or "htdemucs"
+    device = demucs_device if demucs_device is not None else default_demucs_device()
+    meta: dict[str, Any] = {
+        "enabled": use_no_vocals,
+        "applied": False,
+        "skipped": False,
+        "noVocalsPath": None,
+        "error": None,
+        "model": model,
+        "device": device,
+    }
+    if not use_no_vocals:
+        meta["source"] = "original"
+        return audio_path, meta
+
+    ap = Path(audio_path)
+    out_dir = ap.parent / out_subdir_name
+    try:
+        from music_separation_inference import demucs_no_vocals_wav_path
+
+        nv = demucs_no_vocals_wav_path(
+            ap,
+            out_dir,
+            model=model,
+            device=device,
+            extra_args=list(demucs_extra_args or []),
+            log_cmd=False,
+        )
+        meta["applied"] = True
+        meta["noVocalsPath"] = str(nv)
+        meta["source"] = "no_vocals"
+        return str(nv), meta
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Demucs no_vocals for refiner failed, fallback to original mix: %s", exc)
+        meta["error"] = str(exc)
+        meta["source"] = "original_fallback"
+        return audio_path, meta
+
 BASE_DIR = Path(__file__).resolve().parent
 
 
@@ -148,9 +227,17 @@ def refine_chords_with_beats(
     audio_path: str,
     beat_data: dict[str, Any],
     chord_data: dict[str, Any],
+    *,
+    use_no_vocals_for_refiner: bool | None = None,
+    demucs_model: str | None = None,
+    demucs_device: str | None = None,
+    demucs_extra_args: list[str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     對「每一拍」在初辨為 maj/maj7/min/min7 時截取該拍音訊，以 refiner 取信心最高者更新 quality。
+
+    use_no_vocals_for_refiner: True 時先以 Demucs 產生整首 no_vocals（伴奏），再對該拍段做 refiner；
+    None 時讀環境變數 IGTGS_REFINER_USE_NO_VOCALS。若未啟用或無需 refine 的拍則不跑 Demucs。
 
     回傳 (更新後的 chord_data, refine 報告 dict)。
     """
@@ -183,11 +270,48 @@ def refine_chords_with_beats(
             )
             for i in range(len(beats))
         ]
+        report["demucsForRefiner"] = {
+            "enabled": False,
+            "applied": False,
+            "skipped": True,
+            "reason": "model_unavailable",
+        }
         return chord_data, report
 
     model, device, weights_str = loaded
     per_beat_final = list(per_beat_original)
     beat_entries: list[dict[str, Any]] = []
+
+    uv_flag = use_no_vocals_for_refiner if use_no_vocals_for_refiner is not None else default_use_no_vocals_for_refiner()
+    has_refine_targets = any_beat_targets_refine(per_beat_original)
+    want_demucs = bool(uv_flag) and has_refine_targets
+    demucs_meta: dict[str, Any]
+    if want_demucs:
+        refiner_audio_path, demucs_meta = prepare_refiner_audio_path(
+            audio_path,
+            use_no_vocals=True,
+            demucs_model=demucs_model,
+            demucs_device=demucs_device,
+            demucs_extra_args=demucs_extra_args,
+        )
+    elif uv_flag and not has_refine_targets:
+        refiner_audio_path = audio_path
+        demucs_meta = {
+            "enabled": True,
+            "applied": False,
+            "skipped": True,
+            "reason": "no_target_beats",
+            "source": "original",
+        }
+    else:
+        refiner_audio_path = audio_path
+        demucs_meta = {
+            "enabled": False,
+            "applied": False,
+            "skipped": True,
+            "reason": "disabled",
+            "source": "original",
+        }
 
     for i in range(len(beats)):
         t0 = beat_times[i]
@@ -208,7 +332,7 @@ def refine_chords_with_beats(
             )
             continue
 
-        result = refine_beat_segment(audio_path, t0, t1, model, device)
+        result = refine_beat_segment(refiner_audio_path, t0, t1, model, device)
         if result is None:
             beat_entries.append(
                 _beat_refine_entry(
@@ -268,6 +392,8 @@ def refine_chords_with_beats(
         "targetQualities": sorted(REFINE_QUALITIES),
         "confidenceThreshold": REFINER_CONFIDENCE_MIN,
         "beats": beat_entries,
+        "demucsForRefiner": demucs_meta,
+        "refinerInputAudioPath": refiner_audio_path,
     }
     return new_chord_data, report
 

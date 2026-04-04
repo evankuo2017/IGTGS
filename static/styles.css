@@ -307,6 +307,21 @@ select {
   color: var(--muted);
 }
 
+.model-field-checkbox label.checkbox-label {
+  font-weight: 500;
+  color: #334155;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+  line-height: 1.45;
+}
+
+.model-field-checkbox input[type="checkbox"] {
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
 .readonly-model-value {
   display: flex;
   align-items: center;

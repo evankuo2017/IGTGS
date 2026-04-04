@@ -26,26 +26,58 @@ from analysis_engine import analyze_audio_file  # noqa: E402
 from beat_chord_refinement import (  # noqa: E402
     REFINER_CONFIDENCE_MIN,
     REFINE_QUALITIES,
+    default_use_no_vocals_for_refiner,
     get_refiner_model,
     parse_root_quality,
+    prepare_refiner_audio_path,
     refine_beat_segment,
 )
 
 _log = logging.getLogger(__name__)
 
 
+def _any_segment_needs_refiner(chord_segments: list[dict[str, Any]]) -> bool:
+    for seg in chord_segments:
+        orig = str(seg.get("chord", "") or "")
+        root, quality = parse_root_quality(orig)
+        if root is not None and quality is not None and quality in REFINE_QUALITIES:
+            return True
+    return False
+
+
 def run_segment_wise_refine(
     audio_path: str,
     chord_segments: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None]:
+    *,
+    use_no_vocals: bool | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None, dict[str, Any]]:
     """
     對每個和弦 segment 嘗試 refiner。
-    回傳 (更新後的 segments 列表, 每段詳細 log, refiner 權重路徑或 None)。
+    use_no_vocals: True 時先 Demucs 產生 no_vocals 再推理；None 時依 IGTGS_REFINER_USE_NO_VOCALS。
+    回傳 (更新後的 segments 列表, 每段詳細 log, refiner 權重路徑或 None, demucs meta)。
     """
     loaded = get_refiner_model()
     weights_path: str | None = loaded[2] if loaded else None
     model = loaded[0] if loaded else None
     device = loaded[1] if loaded else None
+
+    uv = use_no_vocals if use_no_vocals is not None else default_use_no_vocals_for_refiner()
+    demucs_meta: dict[str, Any] = {"enabled": bool(uv), "applied": False, "skipped": True, "source": "original"}
+    refiner_audio_path = audio_path
+    segment_needs = _any_segment_needs_refiner(chord_segments)
+    if loaded is not None and uv and segment_needs:
+        refiner_audio_path, demucs_meta = prepare_refiner_audio_path(
+            audio_path,
+            use_no_vocals=True,
+        )
+    elif uv and not segment_needs:
+        demucs_meta = {
+            "enabled": True,
+            "applied": False,
+            "skipped": True,
+            "reason": "no_target_segments",
+            "source": "original",
+        }
 
     refined_segments: list[dict[str, Any]] = []
     details: list[dict[str, Any]] = []
@@ -83,7 +115,7 @@ def run_segment_wise_refine(
             refined_segments.append(new_seg)
             continue
 
-        result = refine_beat_segment(audio_path, start, end, model, device)
+        result = refine_beat_segment(refiner_audio_path, start, end, model, device)
         if result is None:
             entry["finalChord"] = orig
             entry["refined"] = False
@@ -114,7 +146,7 @@ def run_segment_wise_refine(
         details.append(entry)
         refined_segments.append(new_seg)
 
-    return refined_segments, details, weights_path
+    return refined_segments, details, weights_path, demucs_meta
 
 
 def main() -> int:
@@ -128,6 +160,11 @@ def main() -> int:
         help="將 JSON 結果寫入檔案（未指定則印到 stdout）",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="印出除錯 log")
+    parser.add_argument(
+        "--refiner-no-vocals",
+        action="store_true",
+        help="Chord Refiner 前以 Demucs 產生伴奏軌 no_vocals（與 Web 勾選項相同概念）",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -153,9 +190,10 @@ def main() -> int:
     if segments_in and duration <= 0:
         duration = float(segments_in[-1].get("end") or 0.0)
 
-    refined_segments, segment_details, weights_path = run_segment_wise_refine(
+    refined_segments, segment_details, weights_path, demucs_meta = run_segment_wise_refine(
         str(audio_path),
         segments_in,
+        use_no_vocals=(True if args.refiner_no_vocals else None),
     )
 
     payload: dict[str, Any] = {
@@ -171,6 +209,8 @@ def main() -> int:
         "chordsOriginal": segments_in,
         "chordsAfterRefine": refined_segments,
         "segmentRefineLog": segment_details,
+        "demucsForRefiner": demucs_meta,
+        "refinerInputAudioPath": refiner_audio_path,
     }
 
     text = json.dumps(payload, ensure_ascii=False, indent=2)

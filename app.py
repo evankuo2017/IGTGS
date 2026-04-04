@@ -303,6 +303,22 @@ def serve_cached_media(filename: str) -> Any:
     return resp
 
 
+def _refiner_no_vocals_from_request() -> bool:
+    """
+    表單欄位 refiner_no_vocals 有送則依表單；
+    否則依環境變數 IGTGS_REFINER_USE_NO_VOCALS（供僅 API 呼叫時使用）。
+    """
+    raw = request.form.get("refiner_no_vocals")
+    if raw is not None:
+        return str(raw).strip().lower() in ("1", "true", "on", "yes")
+    return os.environ.get("IGTGS_REFINER_USE_NO_VOCALS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 @app.post("/api/analyze")
 def api_analyze() -> Any:
     video_id = request.form.get("video_id", "").strip()
@@ -352,6 +368,7 @@ def api_analyze() -> Any:
                 audio_path,
                 beat_data,
                 chord_data,
+                use_no_vocals_for_refiner=_refiner_no_vocals_from_request(),
             )
 
             analysis_payload = build_frontend_analysis(

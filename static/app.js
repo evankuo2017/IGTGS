@@ -41,6 +41,7 @@ const loadingMessages = [
   "正在下載或接收音訊...",
   "正在執行 Beat Detection...",
   "正在執行 Chord Recognition...",
+  "Chord Refiner：Demucs 伴奏分離（若已勾選上方選項）…",
   "正在整理 Beat & Chord Map...",
 ];
 
@@ -74,6 +75,7 @@ const dom = {
   guitarChords: document.querySelector("#guitar-chords"),
   capoSelector: document.querySelector("#capo-selector"),
   refineResultToggle: document.querySelector("#refine-result-toggle"),
+  refinerNoVocals: document.querySelector("#refiner-no-vocals"),
   rawOutput: document.querySelector("#raw-output"),
   tabs: document.querySelectorAll(".tab-button"),
   panels: document.querySelectorAll(".tab-panel"),
@@ -1950,6 +1952,9 @@ async function handleAnalyze() {
   const formData = new FormData();
   formData.append("beat_detector", FIXED_BEAT_DETECTOR);
   formData.append("chord_detector", FIXED_CHORD_DETECTOR);
+  if (dom.refinerNoVocals) {
+    formData.append("refiner_no_vocals", dom.refinerNoVocals.checked ? "1" : "0");
+  }
 
   if (state.selectedFile) {
     formData.append("audio_file", state.selectedFile);
