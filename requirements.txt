@@ -1,5 +1,9 @@
+# 安裝（Linux / Python 3.10 / 已裝 gcc）：madmom 僅有 sdist，須先 bootstrap 再關閉 build isolation。
+#   pip install -r requirements-bootstrap.txt
+#   pip install --no-build-isolation -r requirements.txt
+#
 # madmom 0.16 / librosa 等仍 import pkg_resources；setuptools>=81 已移除該模組，會導致「沒有 madmom」類錯誤
-setuptools>=65.0,<81
+setuptools==80.10.2
 
 # Core numerical stack
 numpy==1.26.4
@@ -23,14 +27,16 @@ resampy==0.4.3
 soxr==0.5.0.post1
 pydub==0.25.1
 ffmpeg-python==0.2.0
+# 建置 madmom 需要；請先依檔頭兩步安裝（bootstrap + --no-build-isolation）
+Cython==3.0.12
 madmom==0.16.1
 
 # ML frameworks
 tensorflow==2.15.1
 protobuf==3.20.3
 torch==2.6.0
-torchaudio
-demucs>=4.0.0
+torchaudio==2.6.0
+demucs==4.0.1
 
 # Music analysis
 pretty_midi==0.2.10

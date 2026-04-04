@@ -61,8 +61,11 @@ conda install -c conda-forge ffmpeg -y
 
 ## 3. 安裝 Python 依賴
 
+`madmom` 在 PyPI 僅提供原始碼包，建置時需要本機已安裝 `Cython`，且須使用 pip 的 `--no-build-isolation`（環境變數 `PIP_NO_BUILD_ISOLATION` 無效）。請分兩步執行：
+
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-bootstrap.txt
+pip install --no-build-isolation -r requirements.txt
 ```
 
 ## 4. 啟動系統

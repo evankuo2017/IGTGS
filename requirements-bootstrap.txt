@@ -1,0 +1,9 @@
+# 先裝建置 madmom（sdist）所需工具，再執行：
+#   pip install --no-build-isolation -r requirements.txt
+#
+# 說明：pip 的 PIP_NO_BUILD_ISOLATION 環境變數無效；須使用 CLI 旗標 --no-build-isolation。
+# 且同一條 -r 指令可能在「安裝」Cython 之前就開始建置 madmom，故拆成兩步。
+setuptools==80.10.2
+wheel
+Cython==3.0.12
+numpy==1.26.4
