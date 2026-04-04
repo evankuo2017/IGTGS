@@ -14,10 +14,20 @@ class MadmomDetector:
 
     def __init__(self) -> None:
         self._available: bool | None = None
+        # 匯入失敗時保留原因，方便使用者對症處理（多為未安裝或裝在別的 Python）
+        self._import_error: str | None = None
 
     def is_available(self) -> bool:
         if self._available is not None:
             return self._available
+
+        # 須在 import madmom 前套用（Python 3.10+ collections、NumPy 別名等）
+        try:
+            from compat import apply_all
+
+            apply_all()
+        except Exception as exc:  # noqa: BLE001
+            log_error(f"compat.apply_all before madmom import: {exc}")
 
         try:
             import madmom
@@ -30,13 +40,20 @@ class MadmomDetector:
         except ImportError as exc:
             log_error(f"Madmom import failed: {exc}")
             self._available = False
+            self._import_error = str(exc)
             return False
 
     def detect_beats(self, file_path: str) -> dict[str, Any]:
         if not self.is_available():
+            detail = self._import_error or "unknown import error"
             return {
                 "success": False,
-                "error": "Madmom is not available",
+                "error": (
+                    "Madmom is not available（無法匯入 madmom 套件）。"
+                    f" 原因：{detail}。"
+                    " 請確認已執行 `conda activate IGTGS` 後在專案根目錄 `pip install -r requirements.txt`，"
+                    "並用 `python -c \"import madmom\"` 驗證與啟動 app 的是同一個 Python。"
+                ),
                 "model_used": "madmom",
                 "model_name": "Madmom",
             }

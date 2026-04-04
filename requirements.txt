@@ -1,3 +1,6 @@
+# madmom 0.16 / librosa 等仍 import pkg_resources；setuptools>=81 已移除該模組，會導致「沒有 madmom」類錯誤
+setuptools>=65.0,<81
+
 # Core numerical stack
 numpy==1.26.4
 numba==0.59.1
